@@ -727,6 +727,11 @@ def create_reader_from_config(conf_path: Optional[str] = None) -> WeChatReader:
     if not merge_path:
         raise KeyError(f"conf_auto.json 中 {last_wxid}.merge_path 为空")
 
+    # 相对路径 → 相对于 exe/项目根目录解析
+    merge_path_obj = Path(merge_path)
+    if not merge_path_obj.is_absolute():
+        merge_path = str(_app_root() / merge_path_obj)
+
     logger.info("从配置文件加载：wxid=%s, db=%s", my_wxid, merge_path)
     return WeChatReader(db_path=merge_path, my_wxid=my_wxid)
 
@@ -886,6 +891,10 @@ def sync_database() -> tuple[bool, str]:
 
     if not wx_path or not key or not merge_path:
         return False, "缺失 wx_path, key 或 merge_path"
+
+    # 相对路径 → 相对于 exe/项目根目录解析
+    if not os.path.isabs(merge_path):
+        merge_path = str(_app_root() / merge_path)
 
     # 创建临时目录，将 db 文件连同 WAL patch 后的副本放入，再交给 decrypt_merge
     tmp_dir = tempfile.mkdtemp(prefix="wxsync_wal_")
