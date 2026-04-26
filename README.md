@@ -36,7 +36,7 @@
 
 ## 截图 / Screenshots
 
-> *(截图待补充 / Screenshots coming soon)*
+<img width="1920" height="879" alt="1777213366652" src="https://github.com/user-attachments/assets/216dda0e-e0b2-4c37-8236-21d6796ffffc" />
 
 ---
 
