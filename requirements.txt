@@ -1,0 +1,19 @@
+# requirements.txt — Python 依赖清单
+# 安装命令：
+#   d:\APP\win-wechat-summary\.venv\Scripts\python.exe -m pip install -r requirements.txt -i https://pypi.org/simple
+
+# ── 核心 ──────────────────────────────────────
+pywxdump>=3.0            # 微信数据库解密（PyWxDump 已单独运行，此处备查）
+flask>=3.0               # Web 后端
+
+# ── AI 服务 ───────────────────────────────────
+anthropic>=0.30          # Claude（Anthropic）
+openai>=1.30             # ChatGPT / DeepSeek / 通义千问（OpenAI 兼容）
+requests>=2.31           # Ollama HTTP 调用（Phase 2）
+
+# ── 工具 ──────────────────────────────────────
+apscheduler>=3.10        # 定时任务（Phase 2）
+cryptography>=41.0       # API Key 安全存储（Windows DPAPI，Phase 2）
+
+# ── 打包（仅开发时需要）──────────────────────
+# pyinstaller>=6.0       # 打包为 exe（Phase 3，按需安装）
