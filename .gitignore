@@ -23,12 +23,15 @@ dist/
 .DS_Store
 Thumbs.db
 
-# App data / secrets
-wxdump_work/
-*.db
+# App data / secrets — never commit these
+wxdump_work/          # contains WeChat DB decryption key
+*.db                  # SQLite databases (merge_all.db, history.db)
 *.db-wal
 *.db-shm
-~/.wechat-summary/
+config.json           # contains encrypted API keys
+
+# User data directory (outside project, but just in case)
+.wechat-summary/
 
 # Claude
 .claude/
