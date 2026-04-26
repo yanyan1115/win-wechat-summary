@@ -1,8 +1,13 @@
 # 微信群聊 AI 总结 / WeChat Group AI Summarizer
 
 > 🔒 **零封号风险** — 只读本地数据库，绝不与微信服务器通信  
+> 🔒 **Zero ban risk** — read-only local database, never communicates with WeChat servers
+>
 > 🤖 **多模型支持** — Claude / ChatGPT / DeepSeek / 通义千问 / Ollama  
+> 🤖 **Multi-model support** — Claude / ChatGPT / DeepSeek / Qwen / Ollama
+>
 > 🖥️ **本地运行** — 所有数据留在你的电脑上，API Key 加密存储  
+> 🖥️ **Runs locally** — all data stays on your machine, API keys encrypted
 
 ---
 
@@ -16,15 +21,16 @@
 
 ## 功能特色 / Features
 
-| 功能 | 说明 |
+| 功能 / Feature | 说明 / Description |
 |------|------|
-| 📋 **群聊总结** | 按时间段或最近 N 条消息生成 AI 总结 |
-| 🔍 **关键词搜索** | 跨群全文搜索 + AI 归纳搜索结果 |
-| 📜 **历史记录** | 所有总结自动存档，支持导出为 Markdown |
-| ⏰ **定时任务** | 每天自动总结指定群聊，静默写入历史 |
-| 🤖 **多模型支持** | 自由切换 Claude / ChatGPT / DeepSeek / 通义千问 / Ollama |
-| 🔐 **安全存储** | API Key 使用 Windows DPAPI 加密，只有当前用户可解密 |
-| 🗂️ **系统托盘** | 关闭浏览器后程序继续在托盘运行 |
+| 📋 **群聊总结 / Group Summary** | 按时间段或最近 N 条消息生成 AI 总结 / AI summary by time range or latest N messages |
+| 🔖 **阅读书签 / Bookmark** | 自动记录上次总结位置，下次一键续读 / Auto-saves last summary position for easy catch-up |
+| 🔍 **关键词搜索 / Search** | 跨群全文搜索 + AI 归纳搜索结果 / Cross-group full-text search with AI-powered digest |
+| 📜 **历史记录 / History** | 所有总结自动存档，支持导出为 Markdown / All summaries archived, exportable as Markdown |
+| ⏰ **定时任务 / Scheduler** | 每天自动总结指定群聊，静默写入历史 / Daily auto-summary for selected groups |
+| 🤖 **多模型支持 / Multi-model** | 自由切换 Claude / ChatGPT / DeepSeek / 通义千问 / Ollama / Switch between Claude, ChatGPT, DeepSeek, Qwen, Ollama |
+| 🔐 **安全存储 / Secure Storage** | API Key 使用 Windows DPAPI 加密，只有当前用户可解密 / API keys encrypted with Windows DPAPI |
+| 🗂️ **系统托盘 / System Tray** | 关闭浏览器后程序继续在托盘运行 / Keeps running in the tray after closing the browser |
 
 ---
 
@@ -32,25 +38,17 @@
 
 > *(截图待补充 / Screenshots coming soon)*
 
-<!-- 
-  建议截图：
-  1. 主界面 — 群聊总结结果
-  2. AI 设置页面
-  3. 历史记录页面
-  4. 系统托盘菜单
--->
-
 ---
 
 ## 支持的 AI 模型 / Supported AI Models
 
-| 提供商 | 模型示例 | 说明 |
+| 提供商 / Provider | 模型示例 / Example Models | 说明 / Notes |
 |--------|----------|------|
-| **Anthropic Claude** | claude-3-5-sonnet-20241022 | 需要 Claude API Key |
-| **OpenAI ChatGPT** | gpt-4o, gpt-4o-mini | 需要 OpenAI API Key |
-| **DeepSeek** | deepseek-chat | 需要 DeepSeek API Key，性价比高 |
-| **通义千问** | qwen-plus, qwen-turbo | 需要阿里云 API Key |
-| **Ollama** | llama3, qwen2.5 等 | 本地运行，无需 API Key |
+| **Anthropic Claude** | claude-3-5-sonnet-20241022 | 需要 Claude API Key / Requires Claude API Key |
+| **OpenAI ChatGPT** | gpt-4o, gpt-4o-mini | 需要 OpenAI API Key / Requires OpenAI API Key |
+| **DeepSeek** | deepseek-chat | 需要 DeepSeek API Key，性价比高 / Requires DeepSeek API Key, great value |
+| **通义千问 / Qwen** | qwen-plus, qwen-turbo | 需要阿里云 API Key / Requires Alibaba Cloud API Key |
+| **Ollama** | llama3, qwen2.5 等 / etc. | 本地运行，无需 API Key / Runs locally, no API key needed |
 
 ---
 
@@ -58,31 +56,39 @@
 
 ### 前提条件 / Prerequisites
 
-1. **Windows 10/11 64位**
-2. **微信 PC 版**（需曾在此电脑登录过，本地有数据库文件）
-3. **PyWxDump**（用于获取微信数据库密钥）
+1. **Windows 10/11 64位 / 64-bit**
+2. **微信 PC 版处于登录状态 / WeChat PC client, currently logged in**
 
 ### 方法一：直接运行 exe（推荐）/ Method 1: Run the exe (Recommended)
 
+**中文**：
 1. 前往 [Releases](https://github.com/yanyan1115/win-wechat-summary/releases) 下载最新的 `WeChat-Summary.exe`
 2. 保持微信 PC 版处于**登录状态**
 3. 双击 `WeChat-Summary.exe` 启动，浏览器会自动打开 `http://127.0.0.1:5000`
 4. **首次启动**会弹出设置向导，点击「自动检测微信账号」，选择账号后确认即可完成初始化（无需任何命令行操作）
 5. 在「AI 设置」中配置 API Key，点击「同步」，即可开始使用
 
+**English**:
+1. Download the latest `WeChat-Summary.exe` from [Releases](https://github.com/yanyan1115/win-wechat-summary/releases)
+2. Make sure WeChat PC client is **logged in**
+3. Double-click `WeChat-Summary.exe` — your browser will automatically open `http://127.0.0.1:5000`
+4. On **first launch**, a setup wizard will appear — click "Auto-detect WeChat account", select your account, and confirm (no command line needed)
+5. Configure your API Key in "AI Settings", click "Sync", and you're ready to go
+
 ### 方法二：从源码运行 / Method 2: Run from Source
 
 ```powershell
-# 1. 克隆仓库
+# 1. 克隆仓库 / Clone the repo
 git clone https://github.com/yanyan1115/win-wechat-summary.git
 cd win-wechat-summary
 
-# 2. 创建虚拟环境并安装依赖
+# 2. 创建虚拟环境并安装依赖 / Create venv and install dependencies
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
 
 # 3. 启动应用（首次启动时浏览器会弹出设置向导）
+# Start the app (setup wizard will appear on first launch)
 python app.py
 ```
 
@@ -92,79 +98,107 @@ python app.py
 pip install pyinstaller
 pyinstaller build.spec
 # 生成文件在 dist/WeChat-Summary.exe
+# Output: dist/WeChat-Summary.exe
 ```
 
 ---
 
 ## wxdump_work 目录结构 / wxdump_work Directory
 
-**exe 版本**：首次启动时设置向导会自动完成初始化，无需手动操作。
+**exe 版本 / exe version**：首次启动时设置向导会自动完成初始化，无需手动操作。  
+The setup wizard handles initialization automatically on first launch — no manual steps needed.
 
-**源码运行**：需在项目根目录创建 `wxdump_work/conf_auto.json`（可由 `pywxdump showkey` 生成，或直接启动 app.py 后通过设置向导自动生成）：
+**源码运行 / Source run**：需在项目根目录创建 `wxdump_work/conf_auto.json`（可由 `pywxdump showkey` 生成，或直接启动 app.py 后通过设置向导自动生成）。  
+You need `wxdump_work/conf_auto.json` in the project root (generated by `pywxdump showkey`, or automatically by the setup wizard when you first run app.py).
 
 ```
 wxdump_work/
 └── conf_auto.json          # 微信账号配置（含数据库密钥，自动生成）
+                            # WeChat account config (includes DB key, auto-generated)
 └── wxid_xxxxxxxx/
-    └── merge_all.db        # 同步后生成的合并数据库
+    └── merge_all.db        # 同步后生成的合并数据库 / Merged database generated after sync
 ```
 
 ---
 
 ## 配置说明 / Configuration
 
-应用配置保存在 `~/.wechat-summary/config.json`（自动创建），其中 API Key 使用 Windows DPAPI 加密，**只有当前 Windows 登录用户才能读取**。
+**中文**：应用配置保存在 `~/.wechat-summary/config.json`（自动创建），其中 API Key 使用 Windows DPAPI 加密，**只有当前 Windows 登录用户才能读取**。
+
+**English**: App config is saved to `~/.wechat-summary/config.json` (auto-created). API keys are encrypted with Windows DPAPI and can **only be decrypted by the current Windows user**.
 
 ---
 
 ## 常见问题 / FAQ
 
-**Q: 会不会导致微信封号？**  
-A: 不会。本工具只读取本地 SQLite 数据库文件，不与微信服务器产生任何通信。
+**Q: 会不会导致微信封号？/ Will this get my WeChat account banned?**  
+A（中文）: 不会。本工具只读取本地 SQLite 数据库文件，不与微信服务器产生任何通信。  
+A (English): No. This tool only reads local SQLite database files and never communicates with WeChat's servers.
 
-**Q: 找不到群聊 / 群列表为空？**  
-A: 确认 `wxdump_work/conf_auto.json` 存在且路径正确。点击界面左上角「同步」按钮触发数据库解密合并。
+---
 
-**Q: 同步后消息不是最新的？**  
-A: 微信在运行时，最新消息会先缓存在 WAL（预写日志）文件中，每隔几分钟才自动刷入数据库。同步成功后会显示「数据截至 HH:MM」，稍等几分钟再同步通常即可更新。  
-如果长时间不更新（比如某个 MSG 数据库文件刚写满 120MB），重启一次微信 PC 版可强制刷新，之后再同步即可恢复正常。
+**Q: 找不到群聊 / 群列表为空？/ Group list is empty?**  
+A（中文）: 确认 `wxdump_work/conf_auto.json` 存在且路径正确。点击界面左上角「同步」按钮触发数据库解密合并。  
+A (English): Make sure `wxdump_work/conf_auto.json` exists and is correctly configured. Click the "Sync" button in the top-left to decrypt and merge the database.
 
-**Q: 总结质量不好？**  
-A: 可以在「AI 设置」中切换 Prompt 模板（技术交流群 / 通用群），或选择更强的模型（如 Claude Sonnet / GPT-4o）。
+---
 
-**Q: 如何在没有网络的环境下使用？**  
-A: 前端已将 Tailwind / Alpine.js / Marked.js 打包为本地文件，无需网络。但 AI API 调用仍需联网（Ollama 除外）。
+**Q: 同步后消息不是最新的？/ Messages are not up to date after sync?**  
+A（中文）: 微信在运行时，最新消息会先缓存在 WAL（预写日志）文件中，每隔几分钟才自动刷入数据库。同步成功后会显示「数据截至 HH:MM」，稍等几分钟再同步通常即可更新。如果长时间不更新（比如某个 MSG 数据库文件刚写满 120MB），重启一次微信 PC 版可强制刷新，之后再同步即可恢复正常。  
+A (English): While WeChat is running, new messages are first buffered in WAL (Write-Ahead Log) files and flushed to the database every few minutes. After a successful sync, the toast shows "Data as of HH:MM" — waiting a few minutes and syncing again usually picks up the latest messages. If the timestamp stays stuck for a long time (e.g. a MSG database file just hit the 120MB limit), restart WeChat PC client once to force a flush, then sync again.
 
-**Q: 支持 Mac / Linux 吗？**  
-A: 暂不支持。微信 PC 版仅有 Windows 版本，且数据库解密依赖 Windows DPAPI。
+---
+
+**Q: 总结质量不好？/ Summary quality is poor?**  
+A（中文）: 可以在「AI 设置」中切换 Prompt 模板（技术交流群 / 通用群），或选择更强的模型（如 Claude Sonnet / GPT-4o）。  
+A (English): Try switching the prompt template in "AI Settings" (Tech group / General group), or use a more capable model such as Claude Sonnet or GPT-4o.
+
+---
+
+**Q: 如何在没有网络的环境下使用？/ Can I use this offline?**  
+A（中文）: 前端已将 Tailwind / Alpine.js / Marked.js 打包为本地文件，无需网络。但 AI API 调用仍需联网（Ollama 除外）。  
+A (English): The frontend bundles Tailwind / Alpine.js / Marked.js as local files — no internet needed for the UI. AI API calls still require internet access (except Ollama, which runs locally).
+
+---
+
+**Q: 支持 Mac / Linux 吗？/ Is Mac / Linux supported?**  
+A（中文）: 暂不支持。微信 PC 版仅有 Windows 版本，且数据库解密依赖 Windows DPAPI。  
+A (English): Not currently. WeChat PC client is Windows-only, and database decryption relies on Windows DPAPI.
 
 ---
 
 ## 技术栈 / Tech Stack
 
-- **后端**: Python 3.11 + Flask
-- **前端**: 单文件 HTML SPA + Tailwind CSS + Alpine.js（无 Node.js 构建）
-- **数据库**: SQLite（通过 PyWxDump 解密读取）
-- **AI SDK**: anthropic / openai / requests（Ollama）
-- **定时任务**: APScheduler
-- **打包**: PyInstaller（单文件 exe，约 37MB）
+| | |
+|---|---|
+| **后端 / Backend** | Python 3.11 + Flask |
+| **前端 / Frontend** | 单文件 HTML SPA + Tailwind CSS + Alpine.js（无 Node.js 构建 / no Node.js build step） |
+| **数据库 / Database** | SQLite（通过 PyWxDump 解密读取 / decrypted via PyWxDump） |
+| **AI SDK** | anthropic / openai / requests (Ollama) |
+| **定时任务 / Scheduler** | APScheduler |
+| **打包 / Packaging** | PyInstaller（单文件 exe，约 37MB / single-file exe, ~37MB） |
 
 ---
 
 ## 贡献 / Contributing
 
-欢迎提 Issue 和 PR！特别欢迎：
+**中文**：欢迎提 Issue 和 PR！特别欢迎：
 - 新 AI Provider 适配
 - Prompt 模板优化
 - Bug 修复
+
+**English**: Issues and PRs are welcome! Especially:
+- New AI provider integrations
+- Prompt template improvements
+- Bug fixes
 
 ---
 
 ## 免责声明 / Disclaimer
 
-本工具仅供个人学习和使用，请遵守微信用户协议。作者不对任何滥用行为承担责任。
+**中文**：本工具仅供个人学习和使用，请遵守微信用户协议。作者不对任何滥用行为承担责任。
 
-This tool is for personal use only. Please comply with WeChat's Terms of Service. The author is not responsible for any misuse.
+**English**: This tool is for personal use only. Please comply with WeChat's Terms of Service. The author is not responsible for any misuse.
 
 ---
 
