@@ -414,13 +414,109 @@ def api_scheduler_config_save():
         if "room_ids" in body: cfg["room_ids"] = body["room_ids"]
         
         get_config().save()
-        
+
         # 通知调度器更新
         update_scheduler_job()
-        
+
         return _ok(message="定时任务设置已保存并生效")
     except Exception as exc:
         logger.exception("保存定时配置失败")
+        return _err(f"保存失败：{exc}", 500)
+
+
+# ── 路由：初始化向导 ──────────────────────────────
+
+@bp.get("/api/setup/status")
+def api_setup_status():
+    """检查是否已完成初始化（conf_auto.json 是否存在）"""
+    from core.wechat import _app_root
+    conf_path = _app_root() / "wxdump_work" / "conf_auto.json"
+    return _ok(initialized=conf_path.exists())
+
+
+@bp.get("/api/setup/detect")
+def api_setup_detect():
+    """
+    自动从运行中的微信进程读取账号信息。
+    微信必须处于登录状态。
+    """
+    try:
+        from pywxdump import get_wx_info, WX_OFFS
+        results = get_wx_info(WX_OFFS)
+        if not results:
+            return _err("未检测到运行中的微信，请确保微信已登录", 404)
+        # 过滤掉 key 为空的项
+        valid = [r for r in results if r.get("key")]
+        if not valid:
+            return _err("检测到微信但无法获取密钥，请确保微信已完全登录（不是扫码等待状态）", 404)
+        # 脱敏手机号和邮箱再返回给前端
+        safe = []
+        for r in valid:
+            safe.append({
+                "wxid":     r.get("wxid", ""),
+                "nickname": r.get("nickname", ""),
+                "account":  r.get("account", ""),
+                "version":  r.get("version", ""),
+                "wx_dir":   r.get("wx_dir", ""),
+                "key":      r.get("key", ""),   # 需要保存，但不显示
+            })
+        return _ok(safe)
+    except Exception as exc:
+        logger.exception("自动检测微信信息失败")
+        return _err(f"检测失败：{exc}", 500)
+
+
+@bp.post("/api/setup/save")
+def api_setup_save():
+    """
+    保存检测到的微信信息为 conf_auto.json，完成初始化。
+    请求体：{ wxid, nickname, wx_dir, key }
+    """
+    body = request.get_json(force=True, silent=True) or {}
+    wxid   = (body.get("wxid") or "").strip()
+    wx_dir = (body.get("wx_dir") or "").strip()
+    key    = (body.get("key") or "").strip()
+
+    if not wxid or not wx_dir or not key:
+        return _err("缺少必要字段 wxid / wx_dir / key")
+
+    try:
+        from core.wechat import _app_root, reset_global_reader
+        import json
+        from pathlib import Path
+
+        root = _app_root()
+        wxdump_dir = root / "wxdump_work"
+        wxdump_dir.mkdir(parents=True, exist_ok=True)
+
+        merge_path = str(wxdump_dir / wxid / "merge_all.db")
+        (wxdump_dir / wxid).mkdir(parents=True, exist_ok=True)
+
+        conf = {
+            "auto_setting": {"last": wxid},
+            wxid: {
+                "key":        key,
+                "wx_path":    wx_dir,
+                "merge_path": merge_path,
+                "my_wxid":    wxid,
+                "db_config": {
+                    "key":  key,
+                    "type": "sqlite",
+                    "path": merge_path,
+                }
+            }
+        }
+        conf_path = wxdump_dir / "conf_auto.json"
+        with open(conf_path, "w", encoding="utf-8") as f:
+            json.dump(conf, f, ensure_ascii=False, indent=4)
+
+        # 重置 reader 以便用新配置重新初始化
+        reset_global_reader()
+
+        logger.info("初始化完成：conf_auto.json 已写入 %s", conf_path)
+        return _ok(message="初始化成功，正在同步数据库...")
+    except Exception as exc:
+        logger.exception("保存初始化配置失败")
         return _err(f"保存失败：{exc}", 500)
 
 
