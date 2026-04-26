@@ -321,6 +321,9 @@
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-3 shrink-0">
+                                    <button @click.stop="exportHistory(record)" class="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="导出为 Markdown">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                    </button>
                                     <button @click.stop="deleteHistory(record.id)" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="删除记录">
                                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                     </button>
@@ -876,6 +879,39 @@
                         this.historyRecords = this.historyRecords.filter(r => r.id !== id);
                         if (this.expandedHistoryId === id) this.expandedHistoryId = null;
                     } catch(e) {}
+                },
+
+                exportHistory(record) {
+                    // 组装 Markdown 文件内容
+                    const lines = [
+                        `# ${record.group_name} 群聊总结`,
+                        ``,
+                        `- **时间段**：${record.time_range}`,
+                        `- **消息数**：${record.msg_count} 条`,
+                        `- **模型**：${record.provider_model}`,
+                        `- **生成时间**：${record.created_at}`,
+                        ``,
+                        `---`,
+                        ``,
+                        record.content,
+                    ];
+                    const md = lines.join('\n');
+                    // 生成合法文件名：群名 + 时间段（去掉特殊字符）
+                    const safeName = `${record.group_name}_${record.time_range}`
+                        .replace(/[\\/:*?"<>|]/g, '-')
+                        .replace(/\s+/g, '_')
+                        .slice(0, 80);
+                    const filename = `${safeName}.md`;
+                    // 触发浏览器下载
+                    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+                    const url  = URL.createObjectURL(blob);
+                    const a    = document.createElement('a');
+                    a.href = url; a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    this.showToast(`已导出 ${filename}`, 'success');
                 },
 
                 // ── 设置逻辑 ──
