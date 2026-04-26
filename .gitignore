@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# PyInstaller
+build/
+dist/
+*.spec.bak
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# App data / secrets
+wxdump_work/
+*.db
+*.db-wal
+*.db-shm
+~/.wechat-summary/
+
+# Claude
+.claude/
+
+# Logs
+*.log
