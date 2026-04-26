@@ -13,10 +13,22 @@ core/wechat.py — 微信本地数据库只读读取模块
 import json
 import logging
 import sqlite3
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+
+def _app_root() -> Path:
+    """
+    返回应用根目录：
+    - 打包为 exe 时：exe 文件所在目录（而非 _MEI 临时解压目录）
+    - 直接运行 py 时：项目根目录（core/ 的上级）
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent.parent
 
 logger = logging.getLogger(__name__)
 
@@ -671,10 +683,8 @@ def create_reader_from_config(conf_path: Optional[str] = None) -> WeChatReader:
         KeyError: 配置文件格式不符合预期。
     """
     if conf_path is None:
-        # 默认路径：相对于本文件的上级目录
-        conf_path = str(
-            Path(__file__).parent.parent / "wxdump_work" / "conf_auto.json"
-        )
+        # 默认路径：exe 所在目录 / wxdump_work / conf_auto.json
+        conf_path = str(_app_root() / "wxdump_work" / "conf_auto.json")
 
     conf_file = Path(conf_path)
     if not conf_file.exists():
@@ -837,7 +847,7 @@ def sync_database() -> tuple[bool, str]:
     except ImportError:
         return False, "未安装 pywxdump"
 
-    conf_path = str(Path(__file__).parent.parent / "wxdump_work" / "conf_auto.json")
+    conf_path = str(_app_root() / "wxdump_work" / "conf_auto.json")
     if not os.path.exists(conf_path):
         return False, f"配置文件不存在: {conf_path}"
 
