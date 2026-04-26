@@ -66,18 +66,10 @@
 ### 方法一：直接运行 exe（推荐）/ Method 1: Run the exe (Recommended)
 
 1. 前往 [Releases](https://github.com/yanyan1115/win-wechat-summary/releases) 下载最新的 `WeChat-Summary.exe`
-2. 使用 PyWxDump 初始化工作目录（获取微信密钥）：
-   ```powershell
-   # 安装 PyWxDump
-   pip install pywxdump
-   
-   # 运行 PyWxDump 获取密钥并初始化（微信保持登录状态）
-   # 将生成的 conf_auto.json 放入 wxdump_work/ 目录
-   pywxdump showkey
-   ```
-3. 在 `WeChat-Summary.exe` 同目录下创建 `wxdump_work/` 文件夹，放入 `conf_auto.json`
-4. 双击 `WeChat-Summary.exe` 启动，浏览器会自动打开 `http://127.0.0.1:5000`
-5. 在「AI 设置」中配置 API Key，即可开始使用
+2. 保持微信 PC 版处于**登录状态**
+3. 双击 `WeChat-Summary.exe` 启动，浏览器会自动打开 `http://127.0.0.1:5000`
+4. **首次启动**会弹出设置向导，点击「自动检测微信账号」，选择账号后确认即可完成初始化（无需任何命令行操作）
+5. 在「AI 设置」中配置 API Key，点击「同步」，即可开始使用
 
 ### 方法二：从源码运行 / Method 2: Run from Source
 
@@ -91,9 +83,7 @@ python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
 
-# 3. 准备 wxdump_work/conf_auto.json（见上方 PyWxDump 步骤）
-
-# 4. 启动应用
+# 3. 启动应用（首次启动时浏览器会弹出设置向导）
 python app.py
 ```
 
@@ -109,22 +99,15 @@ pyinstaller build.spec
 
 ## wxdump_work 目录结构 / wxdump_work Directory
 
-运行前需在项目根目录创建 `wxdump_work/` 并放入以下文件：
+**exe 版本**：首次启动时设置向导会自动完成初始化，无需手动操作。
+
+**源码运行**：需在项目根目录创建 `wxdump_work/conf_auto.json`（可由 `pywxdump showkey` 生成，或直接启动 app.py 后通过设置向导自动生成）：
 
 ```
 wxdump_work/
-└── conf_auto.json          # PyWxDump 生成的配置文件（含数据库密钥）
-```
-
-`conf_auto.json` 示例结构（由 PyWxDump 自动生成，请勿手动编辑密钥）：
-```json
-{
-  "wxid_xxxxxxxx": {
-    "key": "<微信数据库解密密钥>",
-    "wx_path": "C:\\Users\\你的用户名\\Documents\\WeChat Files\\wxid_xxxxxxxx",
-    "merge_path": "wxdump_work\\wxid_xxxxxxxx\\merge_all.db"
-  }
-}
+└── conf_auto.json          # 微信账号配置（含数据库密钥，自动生成）
+└── wxid_xxxxxxxx/
+    └── merge_all.db        # 同步后生成的合并数据库
 ```
 
 ---
@@ -144,7 +127,8 @@ A: 不会。本工具只读取本地 SQLite 数据库文件，不与微信服务
 A: 确认 `wxdump_work/conf_auto.json` 存在且路径正确。点击界面左上角「同步」按钮触发数据库解密合并。
 
 **Q: 同步后消息不是最新的？**  
-A: 微信在后台运行时，最新消息会先存在 WAL（预写日志）文件中。本工具已内置 WAL 补丁逻辑，会在同步时自动合并。如果仍有遗漏，可尝试关闭再重开微信 PC 版后再同步。
+A: 微信在运行时，最新消息会先缓存在 WAL（预写日志）文件中，每隔几分钟才自动刷入数据库。同步成功后会显示「数据截至 HH:MM」，稍等几分钟再同步通常即可更新。  
+如果长时间不更新（比如某个 MSG 数据库文件刚写满 120MB），重启一次微信 PC 版可强制刷新，之后再同步即可恢复正常。
 
 **Q: 总结质量不好？**  
 A: 可以在「AI 设置」中切换 Prompt 模板（技术交流群 / 通用群），或选择更强的模型（如 Claude Sonnet / GPT-4o）。
