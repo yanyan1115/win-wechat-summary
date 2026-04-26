@@ -741,6 +741,13 @@ def create_reader_from_config(conf_path: Optional[str] = None) -> WeChatReader:
 _global_reader: WeChatReader | None = None
 _global_reader_error: str = ""
 
+def reset_global_reader() -> None:
+    """同步完成后调用，强制下次 get_global_reader() 重新打开新的 db 文件"""
+    global _global_reader, _global_reader_error
+    _global_reader = None
+    _global_reader_error = ""
+    logger.info("WeChatReader 单例已重置，下次访问将重新加载数据库")
+
 def get_global_reader() -> WeChatReader:
     """懒加载 WeChatReader 全局单例；失败时抛出 RuntimeError"""
     global _global_reader, _global_reader_error

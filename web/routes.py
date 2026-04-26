@@ -162,9 +162,10 @@ def api_group_count(room_id: str):
 @bp.post("/api/sync")
 def api_sync():
     """手动触发数据库同步"""
-    from core.wechat import sync_database
+    from core.wechat import sync_database, reset_global_reader
     success, msg = sync_database()
     if success:
+        reset_global_reader()   # 重置单例，下次读取时重新打开新的 db
         return _ok(message="同步成功")
     else:
         return _err(f"同步失败: {msg}", 500)
