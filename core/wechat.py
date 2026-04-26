@@ -751,13 +751,13 @@ def reset_global_reader() -> None:
 
 def _get_merge_path() -> str:
     """从 conf_auto.json 读取 merge_path（绝对路径）"""
-    import json as _json
+    import json as _json, os as _os
     conf_path = str(_app_root() / "wxdump_work" / "conf_auto.json")
     with open(conf_path, encoding="utf-8") as f:
         conf = _json.load(f)
     last_wxid = conf.get("auto_setting", {}).get("last", "")
     merge_path = conf.get(last_wxid, {}).get("merge_path", "")
-    if not os.path.isabs(merge_path):
+    if not _os.path.isabs(merge_path):
         merge_path = str(_app_root() / merge_path)
     return merge_path
 

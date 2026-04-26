@@ -175,8 +175,8 @@ def api_sync():
             conn.close()
             if row and row[0]:
                 latest_time = datetime.fromtimestamp(row[0]).strftime("%H:%M")
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.warning("获取最新消息时间失败: %s", _e)
         return _ok(message="同步成功", latest_time=latest_time)
     else:
         return _err(f"同步失败: {msg}", 500)
