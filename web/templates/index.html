@@ -212,13 +212,22 @@
                             <!-- 按时间配置 -->
                             <div x-show="summaryMode === 'time'" class="space-y-3">
                                 <div>
-                                    <label class="block text-xs text-gray-500 mb-1">开始时间</label>
-                                    <input type="datetime-local" x-model="summaryStartTime" 
+                                    <div class="flex items-center justify-between mb-1">
+                                        <label class="text-xs text-gray-500">开始时间</label>
+                                        <button x-show="summaryBookmark"
+                                                @click="summaryStartTime = summaryBookmark"
+                                                class="text-xs text-primary hover:text-primaryHover flex items-center gap-1 transition-colors"
+                                                title="从上次总结结束的位置继续">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+                                            从上次书签继续
+                                        </button>
+                                    </div>
+                                    <input type="datetime-local" x-model="summaryStartTime"
                                            class="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-primary/20 focus:border-primary">
                                 </div>
                                 <div>
                                     <label class="block text-xs text-gray-500 mb-1">结束时间 (可选)</label>
-                                    <input type="datetime-local" x-model="summaryEndTime" 
+                                    <input type="datetime-local" x-model="summaryEndTime"
                                            class="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-primary/20 focus:border-primary">
                                 </div>
                             </div>
@@ -644,6 +653,7 @@
                 summaryCount: 200,
                 summaryStartTime: '',
                 summaryEndTime: '',
+                summaryBookmark: '',  // 上次总结截止时间（书签）
                 isSummarizing: false,
                 summaryResult: '',
                 summaryMeta: {},
@@ -764,9 +774,15 @@
                     );
                 },
 
-                selectGroup(g) {
+                async selectGroup(g) {
                     this.selectedGroup = g;
-                    this.summaryResult = ''; // 切换群时清空结果
+                    this.summaryResult = '';  // 切换群时清空结果
+                    this.summaryBookmark = '';
+                    // 加载该群的书签
+                    try {
+                        const data = await this.apiCall(`/api/bookmark/${encodeURIComponent(g.room_id)}`);
+                        this.summaryBookmark = data.bookmark || '';
+                    } catch(e) {}
                 },
 
                 getGroupName(room_id) {

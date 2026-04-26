@@ -261,6 +261,11 @@ def api_summarize():
             content=result
         )
 
+        # 更新书签：记住本次总结截止时间（取最后一条消息的时间）
+        if msgs:
+            last_msg_time = msgs[-1].create_time.strftime("%Y-%m-%dT%H:%M")
+            history_db.set_bookmark(room_id, last_msg_time)
+
         return _ok(
             result=result,
             msg_count=len(msgs),
@@ -352,6 +357,15 @@ def api_search():
         ai_summary=ai_summary,
         keyword=keyword,
     )
+
+
+# ── 路由：阅读书签 ────────────────────────────────
+
+@bp.get("/api/bookmark/<room_id>")
+def api_bookmark_get(room_id: str):
+    """获取指定群的书签（上次总结截止时间）"""
+    bookmark = history_db.get_bookmark(room_id)
+    return _ok(bookmark=bookmark)
 
 
 # ── 路由：总结历史 ────────────────────────────────

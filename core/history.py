@@ -32,7 +32,7 @@ class SummaryHistory:
 
     def _init_db(self) -> None:
         """初始化数据库表结构"""
-        query = """
+        history_sql = """
         CREATE TABLE IF NOT EXISTS summary_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             room_id TEXT NOT NULL,
@@ -45,9 +45,17 @@ class SummaryHistory:
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
         """
+        bookmark_sql = """
+        CREATE TABLE IF NOT EXISTS summary_bookmark (
+            room_id TEXT PRIMARY KEY,
+            last_end_time TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
         try:
             with self._get_conn() as conn:
-                conn.execute(query)
+                conn.execute(history_sql)
+                conn.execute(bookmark_sql)
                 # 创建索引以便按时间或群名查询
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON summary_history(created_at DESC)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_group_name ON summary_history(group_name)")
@@ -131,6 +139,44 @@ class SummaryHistory:
         except Exception as exc:
             logger.error("删除历史记录失败: %s", exc)
             return False
+
+    # ── 书签接口 ───────────────────────────────────
+
+    def get_bookmark(self, room_id: str) -> Optional[str]:
+        """
+        获取指定群的书签（上次总结截止时间，格式 YYYY-MM-DDTHH:MM）。
+        返回 None 表示从未总结过。
+        """
+        try:
+            with self._get_conn() as conn:
+                row = conn.execute(
+                    "SELECT last_end_time FROM summary_bookmark WHERE room_id = ?",
+                    (room_id,)
+                ).fetchone()
+                return row["last_end_time"] if row else None
+        except Exception as exc:
+            logger.error("读取书签失败 room_id=%s: %s", room_id, exc)
+            return None
+
+    def set_bookmark(self, room_id: str, end_time: str) -> None:
+        """
+        设置指定群的书签（上次总结截止时间）。
+        end_time 格式：YYYY-MM-DDTHH:MM
+        """
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            with self._get_conn() as conn:
+                conn.execute(
+                    """INSERT INTO summary_bookmark (room_id, last_end_time, updated_at)
+                       VALUES (?, ?, ?)
+                       ON CONFLICT(room_id) DO UPDATE SET
+                           last_end_time = excluded.last_end_time,
+                           updated_at    = excluded.updated_at""",
+                    (room_id, end_time, now)
+                )
+        except Exception as exc:
+            logger.error("设置书签失败 room_id=%s: %s", room_id, exc)
+
 
 # 提供一个全局实例以便使用
 history_db = SummaryHistory()
