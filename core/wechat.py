@@ -258,9 +258,13 @@ class WeChatReader:
         try:
             cur.execute("SELECT ChatRoomName, UserNameList, DisplayNameList FROM ChatRoom")
             for row in cur.fetchall():
-                room_id: str = row["ChatRoomName"] or ""
-                user_list: str = row["UserNameList"] or ""
-                name_list: str = row["DisplayNameList"] or ""
+                def _b(v) -> str:
+                    if v is None: return ""
+                    if isinstance(v, bytes): return v.decode("utf-8", errors="ignore")
+                    return str(v)
+                room_id: str = _b(row["ChatRoomName"])
+                user_list: str = _b(row["UserNameList"])
+                name_list: str = _b(row["DisplayNameList"])
 
                 # 处理分隔符（实测两种都有）
                 sep = self._MEMBER_SEP2 if self._MEMBER_SEP2 in user_list else self._MEMBER_SEP
@@ -288,8 +292,12 @@ class WeChatReader:
         try:
             cur.execute("SELECT UserName, NickName, Remark FROM Contact")
             for row in cur.fetchall():
-                wxid: str = row["UserName"] or ""
-                name: str = row["Remark"] or row["NickName"] or ""
+                def _b(v) -> str:
+                    if v is None: return ""
+                    if isinstance(v, bytes): return v.decode("utf-8", errors="ignore")
+                    return str(v)
+                wxid: str = _b(row["UserName"])
+                name: str = _b(row["Remark"]) or _b(row["NickName"])
                 if wxid:
                     cache[wxid] = name
         except Exception as exc:
@@ -330,17 +338,22 @@ class WeChatReader:
         )
         create_time = datetime.fromtimestamp(row["CreateTime"])
 
+        def _s(v) -> str:
+            if v is None: return ""
+            if isinstance(v, bytes): return v.decode("utf-8", errors="ignore")
+            return str(v)
+
         return WeChatMessage(
             local_id=row["localId"],
             msg_svr_id=row["MsgSvrID"],
-            room_id=row["StrTalker"],
+            room_id=_s(row["StrTalker"]),
             sender_id=sender_id,
             sender_name=sender_name,
             is_sender=is_sender,
             msg_type=row["Type"],
-            content=row["StrContent"] or "",
+            content=_s(row["StrContent"]),
             create_time=create_time,
-            display_content=row["DisplayContent"] or "",
+            display_content=_s(row["DisplayContent"]),
         )
 
     # ── 公开接口 ──────────────────────────────
@@ -371,11 +384,19 @@ class WeChatReader:
                 ORDER BY c.Remark, c.NickName
             """)
             for row in cur.fetchall():
-                room_id: str = row["room_id"]
-                nick_name: str = row["nick_name"] or ""
-                remark: str = row["remark"] or ""
-                user_list: str = row["user_list"] or ""
-                announcement: str = row["announcement"] or ""
+                def _to_str(v) -> str:
+                    """将数据库字段值统一转为 str（兼容 bytes/None）"""
+                    if v is None:
+                        return ""
+                    if isinstance(v, bytes):
+                        return v.decode("utf-8", errors="ignore")
+                    return str(v)
+
+                room_id: str = _to_str(row["room_id"])
+                nick_name: str = _to_str(row["nick_name"])
+                remark: str = _to_str(row["remark"])
+                user_list: str = _to_str(row["user_list"])
+                announcement: str = _to_str(row["announcement"])
 
                 # 计算成员数（分隔符容错）
                 sep = self._MEMBER_SEP2 if self._MEMBER_SEP2 in user_list else self._MEMBER_SEP
