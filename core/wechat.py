@@ -728,14 +728,27 @@ def _apply_wal_to_db(db_path: str, dst_path: str) -> None:
     SQLite WAL 格式：
       - 32 字节文件头
       - 每帧 = 24 字节帧头 + PAGE_SIZE 字节加密页数据
-    帧头前 4 字节是 1-based 页号，直接替换主库对应偏移处的页即可。
-    微信 db 页大小固定 4096 字节，主库头部 16 字节为盐值（不属于 SQLite 标准头），
-    因此第 N 页的字节偏移 = (N - 1) * 4096。
+    帧头前 4 字节是 1-based 页号。
+
+    微信加密 db 的特殊页布局：
+      - db[0:16]    = 16 字节 AES 盐值（salt），PyWxDump 解密时用来派生密钥
+      - db[16:4096] = 第 1 页的加密数据（4080 字节，跳过 salt）
+      - db[4096:N]  = 第 2 页及后续页，每页 4096 字节，正常对齐
+
+    WAL 帧里存的是「完整 4096 字节加密页」，其中：
+      - page 1 帧的前 16 字节 = 与主库相同的 salt（由微信写入）
+      - page 1 帧的 [16:4096] = 第 1 页真正的加密数据
+
+    ★ 正确的 patch 规则：
+      - page 1：seek 到 db offset 16，写 wal_page[16:4096]（4080 字节）
+                → 跳过 WAL 帧中的 salt 副本，保留 dst_path 里的原始 salt
+      - page N (N>=2)：seek 到 db offset (N-1)*4096，写完整 4096 字节
     """
     import os
     import struct
 
     PAGE_SIZE = 4096
+    SALT_SIZE = 16          # 微信加密 db 第 1 页前缀：AES salt
     WAL_HEADER = 32
     FRAME_HEADER = 24
 
@@ -773,9 +786,13 @@ def _apply_wal_to_db(db_path: str, dst_path: str) -> None:
 
     with open(dst_path, "r+b") as dbf:
         for page_no, page_data in page_frames.items():
-            offset = (page_no - 1) * PAGE_SIZE
-            dbf.seek(offset)
-            dbf.write(page_data)
+            if page_no == 1:
+                # 第 1 页特殊处理：跳过 salt，只写加密数据部分
+                dbf.seek(SALT_SIZE)
+                dbf.write(page_data[SALT_SIZE:])   # 写 page_data[16:4096]，4080 字节
+            else:
+                dbf.seek((page_no - 1) * PAGE_SIZE)
+                dbf.write(page_data)
 
 
 def _prepare_wx_path_with_wal(wx_path: str, tmp_dir: str) -> str:
