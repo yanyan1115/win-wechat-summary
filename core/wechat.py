@@ -903,14 +903,11 @@ def sync_database() -> tuple[bool, str]:
     if not os.path.isabs(merge_path):
         merge_path = str(_app_root() / merge_path)
 
-    # 创建临时目录，将 db 文件连同 WAL patch 后的副本放入，再交给 decrypt_merge
-    tmp_dir = tempfile.mkdtemp(prefix="wxsync_wal_")
+    # 直接调用 decrypt_merge，让 PyWxDump 处理所有 MSG*.db
     try:
-        patched_wx_path = _prepare_wx_path_with_wal(wx_path, tmp_dir)
-        logger.info("WAL patch 完成，临时目录: %s", patched_wx_path)
-
+        os.makedirs(os.path.dirname(merge_path), exist_ok=True)
         success, msg = decrypt_merge(
-            wx_path=patched_wx_path,
+            wx_path=wx_path,
             key=key,
             outpath=os.path.dirname(merge_path),
             merge_save_path=merge_path,
@@ -920,5 +917,3 @@ def sync_database() -> tuple[bool, str]:
     except Exception as exc:
         logger.error("sync_database 失败: %s", exc, exc_info=True)
         return False, str(exc)
-    finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
