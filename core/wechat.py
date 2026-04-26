@@ -720,40 +720,133 @@ def get_global_reader() -> WeChatReader:
         raise RuntimeError(f"微信数据库未就绪：{_global_reader_error}")
     return _global_reader  # type: ignore
 
+def _apply_wal_to_db(db_path: str, dst_path: str) -> None:
+    """
+    将 db_path 对应的 .db-wal 帧 patch 进 dst_path（db_path 的副本），
+    使解密工具能读到 WAL 中尚未 checkpoint 的最新数据。
+
+    SQLite WAL 格式：
+      - 32 字节文件头
+      - 每帧 = 24 字节帧头 + PAGE_SIZE 字节加密页数据
+    帧头前 4 字节是 1-based 页号，直接替换主库对应偏移处的页即可。
+    微信 db 页大小固定 4096 字节，主库头部 16 字节为盐值（不属于 SQLite 标准头），
+    因此第 N 页的字节偏移 = (N - 1) * 4096。
+    """
+    import os
+    import struct
+
+    PAGE_SIZE = 4096
+    WAL_HEADER = 32
+    FRAME_HEADER = 24
+
+    wal_path = db_path + "-wal"
+    if not os.path.exists(wal_path):
+        return
+    wal_size = os.path.getsize(wal_path)
+    if wal_size <= WAL_HEADER:
+        return
+
+    frame_size = FRAME_HEADER + PAGE_SIZE
+    num_frames = (wal_size - WAL_HEADER) // frame_size
+    if num_frames == 0:
+        return
+
+    # 读取所有帧：只保留每页最新一帧（靠后的 frame 覆盖靠前的）
+    page_frames: dict[int, bytes] = {}
+    with open(wal_path, "rb") as wf:
+        wf.seek(WAL_HEADER)
+        for _ in range(num_frames):
+            fh = wf.read(FRAME_HEADER)
+            if len(fh) < FRAME_HEADER:
+                break
+            page_no = struct.unpack(">I", fh[:4])[0]
+            page_data = wf.read(PAGE_SIZE)
+            if len(page_data) < PAGE_SIZE:
+                break
+            if page_no >= 1:
+                page_frames[page_no] = page_data
+
+    if not page_frames:
+        return
+
+    logger.info("WAL patch: %s 包含 %d 帧，覆盖 %d 个不同页", wal_path, num_frames, len(page_frames))
+
+    with open(dst_path, "r+b") as dbf:
+        for page_no, page_data in page_frames.items():
+            offset = (page_no - 1) * PAGE_SIZE
+            dbf.seek(offset)
+            dbf.write(page_data)
+
+
+def _prepare_wx_path_with_wal(wx_path: str, tmp_dir: str) -> str:
+    """
+    把 wx_path 下的所有 db 文件复制到 tmp_dir（保持相对目录结构），
+    并将对应的 .db-wal 帧 patch 进副本，返回 tmp_dir 内对应 wx_path 的目录。
+    """
+    import os
+    import shutil
+
+    wx_path_abs = os.path.abspath(wx_path)
+    # tmp_dir 内创建与 wx_path 同名的子目录，保持 get_core_db 的路径解析逻辑
+    wx_basename = os.path.basename(wx_path_abs)
+    dst_wx = os.path.join(tmp_dir, wx_basename)
+
+    for root, dirs, files in os.walk(wx_path_abs):
+        for fname in files:
+            if not fname.endswith(".db"):
+                continue
+            src = os.path.join(root, fname)
+            rel = os.path.relpath(root, wx_path_abs)
+            dst_dir = os.path.join(dst_wx, rel)
+            os.makedirs(dst_dir, exist_ok=True)
+            dst = os.path.join(dst_dir, fname)
+            shutil.copy2(src, dst)
+            _apply_wal_to_db(src, dst)
+
+    return dst_wx
+
+
 def sync_database() -> tuple[bool, str]:
     """
-    使用 PyWxDump 的 decrypt_merge 同步微信最新数据库到本地 merge_all.db
+    使用 PyWxDump 的 decrypt_merge 同步微信最新数据库到本地 merge_all.db。
+    在解密前先将各 .db-wal 中的帧 patch 进主库副本，确保最新消息不丢失。
     """
     import json
     import os
+    import shutil
+    import tempfile
     try:
         from pywxdump import decrypt_merge
     except ImportError:
         return False, "未安装 pywxdump"
-        
+
     conf_path = str(Path(__file__).parent.parent / "wxdump_work" / "conf_auto.json")
     if not os.path.exists(conf_path):
         return False, f"配置文件不存在: {conf_path}"
-        
+
     with open(conf_path, "r", encoding="utf-8") as f:
         conf = json.load(f)
-        
+
     wxid = conf.get('auto_setting', {}).get('last', '')
     if not wxid:
         return False, "conf_auto.json 中未找到 wxid"
-        
+
     user_conf = conf.get(wxid, {})
     wx_path = user_conf.get('wx_path', '')
     key = user_conf.get('key', '')
     merge_path = user_conf.get('merge_path', '')
-    
+
     if not wx_path or not key or not merge_path:
         return False, "缺失 wx_path, key 或 merge_path"
-        
-    # 解密并合并
+
+    # 创建临时目录，将 db 文件连同 WAL patch 后的副本放入，再交给 decrypt_merge
+    tmp_dir = tempfile.mkdtemp(prefix="wxsync_wal_")
     try:
+        patched_wx_path = _prepare_wx_path_with_wal(wx_path, tmp_dir)
+        logger.info("WAL patch 完成，临时目录: %s", patched_wx_path)
+
         success, msg = decrypt_merge(
-            wx_path=wx_path,
+            wx_path=patched_wx_path,
             key=key,
             outpath=os.path.dirname(merge_path),
             merge_save_path=merge_path,
@@ -761,4 +854,7 @@ def sync_database() -> tuple[bool, str]:
         )
         return success, msg
     except Exception as exc:
+        logger.error("sync_database 失败: %s", exc, exc_info=True)
         return False, str(exc)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
