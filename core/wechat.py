@@ -748,6 +748,19 @@ def reset_global_reader() -> None:
     _global_reader_error = ""
     logger.info("WeChatReader 单例已重置，下次访问将重新加载数据库")
 
+
+def _get_merge_path() -> str:
+    """从 conf_auto.json 读取 merge_path（绝对路径）"""
+    import json as _json
+    conf_path = str(_app_root() / "wxdump_work" / "conf_auto.json")
+    with open(conf_path, encoding="utf-8") as f:
+        conf = _json.load(f)
+    last_wxid = conf.get("auto_setting", {}).get("last", "")
+    merge_path = conf.get(last_wxid, {}).get("merge_path", "")
+    if not os.path.isabs(merge_path):
+        merge_path = str(_app_root() / merge_path)
+    return merge_path
+
 def get_global_reader() -> WeChatReader:
     """懒加载 WeChatReader 全局单例；失败时抛出 RuntimeError"""
     global _global_reader, _global_reader_error

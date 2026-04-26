@@ -895,7 +895,8 @@
                     this.isSyncing = true;
                     try {
                         const res = await this.apiCall('/api/sync', { method: 'POST' });
-                        this.showToast(res.message || '数据库同步成功！', 'success');
+                        const latestHint = res.latest_time ? `（数据截至 ${res.latest_time}）` : '';
+                        this.showToast((res.message || '数据库同步成功！') + latestHint, 'success');
                         // 重新加载群列表
                         await this.fetchGroups();
                     } catch(e) {
