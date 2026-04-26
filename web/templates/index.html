@@ -17,8 +17,9 @@
             theme: {
                 extend: {
                     colors: {
-                        primary: '#07C160', /* 微信绿 */
+                        primary: '#07C160',
                         primaryHover: '#06AD56',
+                        primaryLight: '#E8F8EF',
                     }
                 }
             }
@@ -26,19 +27,42 @@
     </script>
     <style>
         [x-cloak] { display: none !important; }
-        .markdown-body h1, .markdown-body h2 { font-weight: bold; margin-top: 1em; margin-bottom: 0.5em; color: #111827; }
+
+        /* ── Markdown 渲染 ── */
+        .markdown-body h1, .markdown-body h2, .markdown-body h3 { font-weight: 700; margin-top: 1.25em; margin-bottom: 0.5em; color: #111827; }
         .markdown-body h1 { font-size: 1.5rem; }
-        .markdown-body h2 { font-size: 1.25rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.3em;}
-        .markdown-body p { margin-bottom: 0.75em; color: #374151; line-height: 1.6; }
-        .markdown-body ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 1em; color: #374151; }
-        .markdown-body li { margin-bottom: 0.25em; }
-        .markdown-body strong { color: #111827; }
-        
-        /* 自定义滚动条 */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        .markdown-body h2 { font-size: 1.2rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.35em; }
+        .markdown-body h3 { font-size: 1.05rem; color: #1f2937; }
+        .markdown-body p { margin-bottom: 0.75em; color: #374151; line-height: 1.7; }
+        .markdown-body ul, .markdown-body ol { padding-left: 1.5em; margin-bottom: 1em; color: #374151; }
+        .markdown-body ul { list-style-type: disc; }
+        .markdown-body ol { list-style-type: decimal; }
+        .markdown-body li { margin-bottom: 0.3em; line-height: 1.6; }
+        .markdown-body strong { color: #111827; font-weight: 600; }
+        .markdown-body em { color: #6b7280; }
+        .markdown-body code { background: #f3f4f6; color: #1f2937; padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.875em; font-family: ui-monospace, monospace; }
+        .markdown-body pre { background: #1f2937; color: #e5e7eb; padding: 1em 1.25em; border-radius: 8px; overflow-x: auto; margin-bottom: 1em; font-size: 0.875em; }
+        .markdown-body pre code { background: none; color: inherit; padding: 0; }
+        .markdown-body blockquote { border-left: 3px solid #07C160; padding: 0.4em 1em; margin: 0.75em 0; background: #f0fdf4; color: #374151; border-radius: 0 6px 6px 0; }
+        .markdown-body hr { border: none; border-top: 1px solid #e5e7eb; margin: 1.25em 0; }
+        .markdown-body a { color: #07C160; text-decoration: underline; }
+
+        /* ── 侧栏导航激活项左边框 ── */
+        .nav-active { box-shadow: inset 3px 0 0 #07C160; }
+
+        /* ── 状态灯脉冲 ── */
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .status-pulse { animation: pulse-dot 2s ease-in-out infinite; }
+
+        /* ── 自定义滚动条 ── */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 9999px; }
         ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+        /* ── 卡片悬浮阴影过渡 ── */
+        .card-hover { transition: box-shadow 0.15s ease, border-color 0.15s ease; }
+        .card-hover:hover { box-shadow: 0 4px 12px rgba(0,0,0,.07); }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 h-screen flex overflow-hidden font-sans" x-data="appData()">
@@ -90,11 +114,11 @@
         <!-- 状态栏 -->
         <div class="p-4 border-t border-gray-200 text-xs">
             <div class="flex items-center mb-2">
-                <span class="w-2 h-2 rounded-full mr-2" :class="dbStatus === 'ok' ? 'bg-green-500' : 'bg-red-500'"></span>
+                <span class="w-2 h-2 rounded-full mr-2 status-pulse" :class="dbStatus === 'ok' ? 'bg-green-500' : 'bg-red-500'"></span>
                 <span class="text-gray-600 truncate" x-text="dbStatus === 'ok' ? '数据库已连接' : '数据库错误'"></span>
             </div>
             <div class="flex items-center">
-                <span class="w-2 h-2 rounded-full mr-2" :class="aiStatus === 'ok' ? 'bg-green-500' : 'bg-yellow-500'"></span>
+                <span class="w-2 h-2 rounded-full mr-2 status-pulse" :class="aiStatus === 'ok' ? 'bg-green-500' : 'bg-yellow-500'"></span>
                 <span class="text-gray-600 truncate" x-text="aiStatus === 'ok' ? 'AI 已配置' : 'AI 未配置'"></span>
             </div>
             <p x-show="dbError" class="text-red-500 mt-2 truncate" x-text="dbError" :title="dbError"></p>
@@ -142,7 +166,7 @@
                 <div class="w-80 shrink-0 flex flex-col gap-6">
                     
                     <!-- 选群 -->
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 card-hover">
                         <div class="flex justify-between items-center mb-3">
                             <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wider">选择群聊</h3>
                             <button @click="syncDatabase" :disabled="isSyncing"
@@ -180,7 +204,7 @@
                     </div>
 
                     <!-- 参数设置 -->
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex-1">
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex-1 card-hover">
                         <h3 class="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wider">总结范围</h3>
                         
                         <div class="space-y-4">
@@ -440,7 +464,7 @@
             <!-- ====== 选项卡 3：AI 设置 ====== -->
             <div x-show="currentTab === 'settings'" x-cloak class="p-8 max-w-3xl mx-auto pb-8">
                 
-                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden card-hover">
                     <div class="px-6 py-5 border-b border-gray-200 bg-gray-50">
                         <h3 class="text-lg font-semibold text-gray-800">AI 模型配置</h3>
                         <p class="text-sm text-gray-500 mt-1">选择并配置用于生成总结的大语言模型。所有通信均在本地直连模型 API，保障隐私。</p>
@@ -525,7 +549,7 @@
                 </div>
 
                 <!-- 定时任务设置 -->
-                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mt-6">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mt-6 card-hover">
                     <div class="px-6 py-5 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
                         <div>
                             <h3 class="text-lg font-semibold text-gray-800">定时自动总结任务</h3>
