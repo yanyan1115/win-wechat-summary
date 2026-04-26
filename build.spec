@@ -32,6 +32,18 @@ hiddenimports = [
     'werkzeug.serving',
     'jinja2',
     'click',
+    # 本项目 ai 子包（PyInstaller 扫不到动态导入）
+    'ai',
+    'ai.base',
+    'ai.factory',
+    'ai.claude_provider',
+    'ai.openai_provider',
+    'ai.ollama_provider',
+    # 本项目 core 子包
+    'core',
+    'core.wechat',
+    'core.history',
+    'core.scheduler',
     # AI SDK
     'anthropic',
     'openai',
