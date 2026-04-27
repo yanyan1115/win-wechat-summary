@@ -69,7 +69,7 @@
 5. 在「AI 设置」中配置 API Key，点击「同步」，即可开始使用
 
 **English**:
-1. Download the latest `WeChat-Summary.exe` from [Releases](https://github.com/yanyan1115/win-wechat-summary/releases)
+1. Download the latest `WeChat-Summary.exe` from [Releases](https://github.com/yanyan1115/win-wechat-summary/releases/tag/v1.0.1)
 2. Make sure WeChat PC client is **logged in**
 3. Double-click `WeChat-Summary.exe` — a **UAC prompt will appear on first launch, click "Yes"** (admin rights are required to read WeChat's memory); your browser will automatically open `http://127.0.0.1:5000`
 4. On **first launch**, a setup wizard will appear — click "Auto-detect WeChat account", select your account, and confirm (no command line needed)
