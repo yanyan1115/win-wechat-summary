@@ -64,14 +64,14 @@
 **中文**：
 1. 前往 [Releases](https://github.com/yanyan1115/win-wechat-summary/releases/tag/v1.0.1) 下载最新的 `WeChat-Summary.exe`
 2. 保持微信 PC 版处于**登录状态**
-3. 双击 `WeChat-Summary.exe` 启动，浏览器会自动打开 `http://127.0.0.1:5000`
+3. 双击 `WeChat-Summary.exe` 启动，**首次会弹出 UAC 提权对话框，点「是」即可**（读取微信内存需要管理员权限）；浏览器会自动打开 `http://127.0.0.1:5000`
 4. **首次启动**会弹出设置向导，点击「自动检测微信账号」，选择账号后确认即可完成初始化（无需任何命令行操作）
 5. 在「AI 设置」中配置 API Key，点击「同步」，即可开始使用
 
 **English**:
 1. Download the latest `WeChat-Summary.exe` from [Releases](https://github.com/yanyan1115/win-wechat-summary/releases)
 2. Make sure WeChat PC client is **logged in**
-3. Double-click `WeChat-Summary.exe` — your browser will automatically open `http://127.0.0.1:5000`
+3. Double-click `WeChat-Summary.exe` — a **UAC prompt will appear on first launch, click "Yes"** (admin rights are required to read WeChat's memory); your browser will automatically open `http://127.0.0.1:5000`
 4. On **first launch**, a setup wizard will appear — click "Auto-detect WeChat account", select your account, and confirm (no command line needed)
 5. Configure your API Key in "AI Settings", click "Sync", and you're ready to go
 
@@ -176,7 +176,7 @@ A (English): Not currently. WeChat PC client is Windows-only, and database decry
 | **数据库 / Database** | SQLite（通过 PyWxDump 解密读取 / decrypted via PyWxDump） |
 | **AI SDK** | anthropic / openai / requests (Ollama) |
 | **定时任务 / Scheduler** | APScheduler |
-| **打包 / Packaging** | PyInstaller（单文件 exe，约 37MB / single-file exe, ~37MB） |
+| **打包 / Packaging** | PyInstaller（单文件 exe，约 38MB / single-file exe, ~38MB） |
 
 ---
 

@@ -452,14 +452,29 @@ def api_setup_detect():
     微信必须处于登录状态。
     """
     try:
+        import ctypes
+        import psutil
         from pywxdump import get_wx_info, WX_OFFS
+
+        # 先检查微信进程是否存在（不需要管理员权限）
+        wx_pids = [p.pid for p in psutil.process_iter(["name"]) if p.info["name"] == "WeChat.exe"]
+        if not wx_pids:
+            return _err("未检测到微信进程，请确保微信已启动并登录", 404)
+
         results = get_wx_info(WX_OFFS)
-        if not results:
-            return _err("未检测到运行中的微信，请确保微信已登录", 404)
         # 过滤掉 key 为空的项
         valid = [r for r in results if r.get("key")]
         if not valid:
-            return _err("检测到微信但无法获取密钥，请确保微信已完全登录（不是扫码等待状态）", 404)
+            is_admin = bool(ctypes.windll.shell32.IsUserAnAdmin())
+            if not is_admin:
+                return _err("检测到微信进程但无法读取密钥，请右键以管理员身份运行本程序", 403)
+            # 有管理员权限但仍读不到 key：版本不支持
+            detected_versions = list({r.get("version") for r in results if r.get("version")})
+            ver_hint = f"（检测到版本：{', '.join(detected_versions)}）" if detected_versions else ""
+            return _err(
+                f"可能是微信版本不受支持，当前支持到 3.9.12.55，请检查你的微信版本{ver_hint}",
+                404,
+            )
         # 脱敏手机号和邮箱再返回给前端
         safe = []
         for r in valid:

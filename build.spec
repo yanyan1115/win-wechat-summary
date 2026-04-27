@@ -65,6 +65,7 @@ hiddenimports = [
     'cryptography',
     'ctypes',
     'ctypes.wintypes',
+    'psutil',
     'concurrent.futures',
     'asyncio',
     'threading',
@@ -121,6 +122,7 @@ exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,    # --windowed：不显示控制台
+    uac_admin=True,   # 启动时弹出 UAC 提权对话框（读取微信内存必须）
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
