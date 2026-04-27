@@ -62,7 +62,7 @@
 ### 方法一：直接运行 exe（推荐）/ Method 1: Run the exe (Recommended)
 
 **中文**：
-1. 前往 [Releases](https://github.com/yanyan1115/win-wechat-summary/releases) 下载最新的 `WeChat-Summary.exe`
+1. 前往 [Releases](https://github.com/yanyan1115/win-wechat-summary/releases/tag/v1.0.1) 下载最新的 `WeChat-Summary.exe`
 2. 保持微信 PC 版处于**登录状态**
 3. 双击 `WeChat-Summary.exe` 启动，浏览器会自动打开 `http://127.0.0.1:5000`
 4. **首次启动**会弹出设置向导，点击「自动检测微信账号」，选择账号后确认即可完成初始化（无需任何命令行操作）
