@@ -8,6 +8,7 @@ ai/base.py — AI Provider 抽象基类 + 统一 Prompt 模板
 """
 
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional
@@ -49,7 +50,7 @@ PROMPT_TEMPLATES = {
 
 ## 输出格式
 
-按以下分类输出。每个话题只归入一个最合适的分类。没有内容的分类直接跳过。
+请按话题分类输出。每个话题只归入一个最合适的分类。没有内容的分类直接跳过。
 
 ---
 
@@ -109,6 +110,14 @@ PROMPT_TEMPLATES = {
 **[讨论主题]**
 - 主要观点（直接写观点内容，不需要逐一列出谁说了什么）
 - 结论（如果有的话）
+
+### ✅ 待办事项
+
+> 明确有人需要执行、报名、提交、确认或跟进的事项
+
+**[待办标题]**（负责人：xxx / 未指定）
+- 需要做什么
+- 截止时间或条件（如果有）
 
 ---
 
@@ -208,6 +217,154 @@ FREE_QUERY_PROMPT_TEMPLATE = """\
 # 消息格式化工具
 # ──────────────────────────────────────────────
 
+LOW_VALUE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^.{0,20}拍了拍.{0,20}$"),
+    re.compile(r"^.{0,20}撤回了一条消息.{0,20}$"),
+    re.compile(r"^你撤回了一条消息$"),
+    re.compile(r"^(.{1,20})加入了群聊$"),
+    re.compile(r"^(.{1,20})退出了群聊$"),
+    re.compile(r"^(.{1,20})邀请(.{1,30})加入了群聊$"),
+)
+LOW_VALUE_TEXTS: set[str] = {
+    "收到", "好的", "好", "嗯", "嗯嗯", "是的", "对", "可以", "ok", "OK",
+    "谢谢", "感谢", "辛苦了", "哈哈", "哈哈哈", "hh", "hhh", "赞", "牛",
+    "了解", "明白", "已阅", "1", "+1",
+}
+PLACEHOLDER_LIMITS: dict[str, int] = {
+    "[图片]": 3,
+    "[表情]": 2,
+    "[语音]": 2,
+    "[视频]": 2,
+    "[位置]": 2,
+}
+DEFAULT_INPUT_TOKEN_BUDGET = 24_000
+
+
+@dataclass
+class MessagePreprocessStats:
+    """消息预处理统计信息。"""
+
+    original_count: int
+    cleaned_count: int
+    dropped_count: int
+    estimated_tokens: int
+    chunk_count: int = 1
+
+
+def estimate_tokens(text: str) -> int:
+    """
+    粗略估算输入 token 数。
+
+    中文按字符偏保守估算，ASCII 连续片段按约 4 字符 1 token 估算。
+    """
+    if not text:
+        return 0
+    ascii_chars = sum(1 for ch in text if ord(ch) < 128)
+    non_ascii_chars = len(text) - ascii_chars
+    return max(1, non_ascii_chars + (ascii_chars + 3) // 4)
+
+
+def context_limit_for_model(provider_type: str, model: str) -> int:
+    """根据 provider/model 返回保守上下文窗口。"""
+    name = (model or "").lower()
+    provider = (provider_type or "").lower()
+
+    if "claude" in provider or "claude" in name:
+        return 200_000
+    if "gpt-4o" in name or "gpt-4.1" in name or "gpt-5" in name:
+        return 128_000
+    if "deepseek" in provider or "deepseek" in name:
+        return 64_000
+    if "qwen" in provider or "qwen" in name:
+        return 32_000
+    if "ollama" in provider:
+        return 8_000
+    return 32_000
+
+
+def input_budget_for_model(provider_type: str, model: str, max_output_tokens: int) -> int:
+    """给模型输入预留安全预算，避免顶满上下文。"""
+    context_limit = context_limit_for_model(provider_type, model)
+    reserved = max(max_output_tokens + 2_000, int(context_limit * 0.15))
+    return max(4_000, min(DEFAULT_INPUT_TOKEN_BUDGET, context_limit - reserved))
+
+
+def _is_mostly_symbol(text: str) -> bool:
+    if not text:
+        return True
+    useful = sum(1 for ch in text if ch.isalnum() or "\u4e00" <= ch <= "\u9fff")
+    return useful == 0 or (len(text) <= 8 and useful <= 1)
+
+
+def _is_low_value_text(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text.strip())
+    if not compact:
+        return True
+    if compact in LOW_VALUE_TEXTS:
+        return True
+    if len(compact) <= 2 and not any(ch in compact for ch in ("?", "？", "!", "！")):
+        return True
+    if _is_mostly_symbol(compact):
+        return True
+    return any(pattern.search(compact) for pattern in LOW_VALUE_PATTERNS)
+
+
+def preprocess_messages(messages: list) -> tuple[list, MessagePreprocessStats]:
+    """
+    清洗低信息量消息，减少 token 浪费。
+
+    保留 URL、代码、问句、金额、时间等高价值信息；过滤拍一拍、撤回、纯表情、重复占位符。
+    """
+    cleaned: list = []
+    seen_text: set[str] = set()
+    placeholder_counts: dict[str, int] = {}
+
+    for msg in messages:
+        try:
+            raw_text = msg.to_text_for_ai()
+        except Exception as exc:
+            logger.warning("格式化消息失败，跳过: %s", exc)
+            continue
+
+        body = raw_text.split(": ", 1)[1] if ": " in raw_text else raw_text
+        body = body.strip()
+
+        if body.startswith("[系统]") and _is_low_value_text(body[4:]):
+            continue
+
+        if body in PLACEHOLDER_LIMITS:
+            used = placeholder_counts.get(body, 0)
+            if used >= PLACEHOLDER_LIMITS[body]:
+                continue
+            placeholder_counts[body] = used + 1
+        elif _is_low_value_text(body):
+            continue
+
+        dedupe_key = re.sub(r"\s+", "", body)
+        if dedupe_key and dedupe_key in seen_text and len(dedupe_key) > 20:
+            continue
+        if dedupe_key:
+            seen_text.add(dedupe_key)
+        cleaned.append(msg)
+
+    msg_text = "\n".join(_safe_message_line(m) for m in cleaned)
+    stats = MessagePreprocessStats(
+        original_count=len(messages),
+        cleaned_count=len(cleaned),
+        dropped_count=max(0, len(messages) - len(cleaned)),
+        estimated_tokens=estimate_tokens(msg_text),
+    )
+    return cleaned, stats
+
+
+def _safe_message_line(msg: object) -> str:
+    try:
+        return msg.to_text_for_ai()
+    except Exception as exc:
+        logger.warning("格式化消息失败，跳过: %s", exc)
+        return ""
+
+
 def format_messages_for_ai(messages: list) -> str:
     """
     将 WeChatMessage 列表转成适合投喂给 AI 的纯文本。
@@ -224,11 +381,62 @@ def format_messages_for_ai(messages: list) -> str:
     """
     lines: list[str] = []
     for msg in messages:
-        try:
-            lines.append(msg.to_text_for_ai())
-        except Exception as exc:
-            logger.debug("格式化消息失败，跳过: %s", exc)
+        line = _safe_message_line(msg)
+        if line:
+            lines.append(line)
     return "\n".join(lines)
+
+
+def chunk_messages_by_token_budget(messages: list, token_budget: int) -> list[list]:
+    """按 token 预算把消息切成多个时间顺序分块。"""
+    if not messages:
+        return []
+
+    chunks: list[list] = []
+    current: list = []
+    current_tokens = 0
+
+    for msg in messages:
+        line = _safe_message_line(msg)
+        msg_tokens = max(1, estimate_tokens(line) + 2)
+        if current and current_tokens + msg_tokens > token_budget:
+            chunks.append(current)
+            current = []
+            current_tokens = 0
+        current.append(msg)
+        current_tokens += msg_tokens
+
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def build_reduce_prompt(
+    partial_summaries: list[str],
+    group_name: str,
+    time_range: str = "",
+    original_count: int = 0,
+) -> str:
+    """构建 Map-Reduce 最终汇总 Prompt。"""
+    joined = "\n\n---\n\n".join(
+        f"【分段 {idx}】\n{summary.strip()}"
+        for idx, summary in enumerate(partial_summaries, start=1)
+        if summary.strip()
+    )
+    return f"""\
+你是一个专业的群聊消息分析助手。下面是同一个群聊按时间分段得到的初步摘要。
+
+请把这些分段摘要合并成一份最终总结，去重、合并相同话题，保留重要链接、命令、决策和待办事项。
+
+【群聊信息】
+- 群名称：{group_name or "未知群"}
+- 消息时间段：{time_range or "不限"}
+- 原始消息条数：{original_count}
+- 分段摘要数：{len(partial_summaries)}
+
+【分段摘要】
+{joined}
+"""
 
 
 def build_summary_prompt(
@@ -350,6 +558,19 @@ class AIProvider(ABC):
     def provider_name(self) -> str:
         """Provider 展示名称"""
         return self._config.provider_type
+
+    @property
+    def config(self) -> ProviderConfig:
+        """Provider 配置（只读使用）。"""
+        return self._config
+
+    def get_input_token_budget(self, model: str = "") -> int:
+        """获取当前 Provider 的输入 token 预算。"""
+        return input_budget_for_model(
+            self._config.provider_type,
+            model or self._config.model,
+            self._config.max_tokens,
+        )
 
     @abstractmethod
     async def summarize(

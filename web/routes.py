@@ -16,7 +16,8 @@ from flask import Blueprint, jsonify, request, Response
 
 from config import get_config
 from ai.factory import create_provider_from_dict, list_supported_providers
-from core.wechat import WeChatReader, get_global_reader
+from core.jobs import create_summary_job, get_job
+from core.wechat import get_global_reader
 from core.history import history_db
 
 logger = logging.getLogger(__name__)
@@ -170,9 +171,13 @@ def api_sync():
         latest_time = None
         try:
             merge_path = _get_merge_path()
-            conn = _sqlite3.connect(merge_path)
-            row = conn.execute("SELECT MAX(CreateTime) FROM MSG").fetchone()
-            conn.close()
+            uri = f"file:{merge_path}?mode=ro"
+            conn = _sqlite3.connect(uri, uri=True, timeout=30)
+            try:
+                conn.execute("PRAGMA query_only = ON")
+                row = conn.execute("SELECT MAX(CreateTime) FROM MSG").fetchone()
+            finally:
+                conn.close()
             if row and row[0]:
                 latest_time = datetime.fromtimestamp(row[0]).strftime("%H:%M")
         except Exception as _e:
@@ -184,7 +189,7 @@ def api_sync():
 @bp.post("/api/summarize")
 def api_summarize():
     """
-    生成群聊消息总结。
+    创建群聊消息总结后台任务，立即返回 job_id。
 
     请求体（JSON）：
       room_id     str   必填，群 ID
@@ -200,46 +205,9 @@ def api_summarize():
     if not room_id:
         return _err("缺少必填参数 room_id")
 
-    mode  = body.get("mode", "count")
-    count = int(body.get("count", 200))
-    start = _parse_dt(body.get("start_time"))
-    end   = _parse_dt(body.get("end_time"))
-
-    # 读取消息
-    try:
-        reader = get_global_reader()
-        if mode == "time":
-            if not start or not end:
-                return _err("mode=time 时 start_time 和 end_time 为必填")
-            msgs = reader.get_messages(room_id, start_time=start, end_time=end)
-        else:
-            msgs = reader.get_recent_messages(room_id, count=count)
-    except RuntimeError as exc:
-        return _err(str(exc), 503)
-    except Exception as exc:
-        logger.exception("读取消息失败")
-        return _err(f"读取消息失败：{exc}", 500)
-
-    if not msgs:
-        return _err("该群在指定范围内没有消息", 404)
-
-    # 获取群名
-    group_name = room_id
-    try:
-        groups = reader.get_groups()
-        g = next((g for g in groups if g.room_id == room_id), None)
-        if g:
-            group_name = g.display_name
-    except Exception:
-        pass
-
-    # 时间范围描述
-    if msgs:
-        t0 = msgs[0].create_time.strftime("%Y-%m-%d %H:%M")
-        t1 = msgs[-1].create_time.strftime("%Y-%m-%d %H:%M")
-        time_range = f"{t0} ~ {t1}"
-    else:
-        time_range = ""
+    mode = body.get("mode", "count")
+    if mode == "time" and (not body.get("start_time") or not body.get("end_time")):
+        return _err("mode=time 时 start_time 和 end_time 为必填")
 
     # 确定 AI Provider 配置
     override = body.get("provider") or {}
@@ -249,48 +217,21 @@ def api_summarize():
     if not ai_cfg.get("api_key") and ai_cfg.get("provider_type") != "ollama":
         return _err("AI API Key 未配置，请先在设置中填写", 400)
 
-    # 调用 AI（在独立线程中运行异步代码）
     try:
-        provider = create_provider_from_dict(ai_cfg)
-        timeout  = int(ai_cfg.get("timeout", 120)) + 10
-
-        result = _run_async(
-            provider.summarize(msgs, group_name=group_name, time_range=time_range),
-            timeout=timeout,
-        )
-
-        # 保存到历史记录
-        prompt_tmpl = ai_cfg.get("prompt_template", "tech")
-        model_name = ai_cfg.get('model') or 'default'
-        provider_model = f"{provider.provider_name} ({model_name})"
-        history_db.add_record(
-            room_id=room_id,
-            group_name=group_name,
-            time_range=time_range,
-            msg_count=len(msgs),
-            provider_model=provider_model,
-            prompt_template=prompt_tmpl,
-            content=result
-        )
-
-        # 更新书签：记住本次总结截止时间（取最后一条消息的时间）
-        if msgs:
-            last_msg_time = msgs[-1].create_time.strftime("%Y-%m-%dT%H:%M")
-            history_db.set_bookmark(room_id, last_msg_time)
-
-        return _ok(
-            result=result,
-            msg_count=len(msgs),
-            group_name=group_name,
-            time_range=time_range,
-            provider=provider.provider_name,
-        )
-
-    except concurrent.futures.TimeoutError:
-        return _err("AI 请求超时，请减少消息条数或增大超时设置", 504)
+        job_id = create_summary_job(body, ai_cfg)
+        return _ok(job_id=job_id, status="queued", message="总结任务已创建")
     except Exception as exc:
-        logger.exception("AI 总结失败")
-        return _err(f"AI 总结失败：{exc}", 500)
+        logger.exception("创建总结任务失败")
+        return _err(f"创建总结任务失败：{exc}", 500)
+
+
+@bp.get("/api/jobs/<job_id>")
+def api_job_status(job_id: str):
+    """查询后台任务状态。"""
+    state = get_job(job_id)
+    if state is None:
+        return _err("任务不存在或已过期", 404)
+    return _ok(state)
 
 
 # ── 路由：关键词搜索 ──────────────────────────────

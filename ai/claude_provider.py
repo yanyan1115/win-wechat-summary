@@ -19,7 +19,11 @@ from ai.base import (
     AIProviderTimeoutError,
     ProviderConfig,
     build_query_prompt,
+    build_reduce_prompt,
     build_summary_prompt,
+    chunk_messages_by_token_budget,
+    estimate_tokens,
+    preprocess_messages,
 )
 
 logger = logging.getLogger(__name__)
@@ -176,14 +180,86 @@ class ClaudeProvider(AIProvider):
         if not messages:
             return "（消息列表为空，无法生成总结）"
 
+        cleaned_messages, stats = preprocess_messages(messages)
+        if not cleaned_messages:
+            logger.info("Claude summarize：清洗后无有效消息，跳过 AI 调用")
+            return "这段时间主要是低信息量消息，没有需要重点关注的内容。"
+
         logger.info(
-            "Claude summarize：群=%s，消息数=%d，model=%s",
-            group_name, len(messages), self._model,
+            "Claude summarize：群=%s，原始=%d，清洗后=%d，估算tokens=%d，model=%s",
+            group_name, stats.original_count, stats.cleaned_count,
+            stats.estimated_tokens, self._model,
         )
+        budget = self.get_input_token_budget(self._model)
+        if stats.estimated_tokens <= budget:
+            prompt = build_summary_prompt(
+                cleaned_messages, group_name, time_range,
+                template_name=self._config.prompt_template,
+                custom_prompt=self._config.custom_prompt
+            )
+            return await self._call_stream(prompt)
+
+        chunk_budget = max(2_000, int(budget * 0.75))
+        chunks = chunk_messages_by_token_budget(cleaned_messages, chunk_budget)
+        logger.info(
+            "Claude summarize 进入 Map-Reduce：群=%s，分块=%d，chunk_budget=%d",
+            group_name, len(chunks), chunk_budget,
+        )
+        partials: list[str] = []
+        for idx, chunk in enumerate(chunks, start=1):
+            chunk_prompt = build_summary_prompt(
+                chunk,
+                group_name,
+                f"{time_range}（分段 {idx}/{len(chunks)}）",
+                template_name=self._config.prompt_template,
+                custom_prompt=self._config.custom_prompt,
+            )
+            partials.append(await self._call_stream(chunk_prompt))
+
+        reduce_prompt = build_reduce_prompt(
+            partials,
+            group_name=group_name,
+            time_range=time_range,
+            original_count=len(messages),
+        )
+        if estimate_tokens(reduce_prompt) > budget:
+            logger.warning("Claude Map-Reduce 汇总 Prompt 仍偏大，将截断分段摘要")
+            partials = [p[:4000] for p in partials]
+            reduce_prompt = build_reduce_prompt(
+                partials,
+                group_name=group_name,
+                time_range=time_range,
+                original_count=len(messages),
+            )
+        return await self._call_stream(reduce_prompt)
+
+    async def summarize_chunk(
+        self,
+        messages: list,
+        group_name: str = "",
+        time_range: str = "",
+    ) -> str:
+        """为任务队列提供单块总结入口。"""
         prompt = build_summary_prompt(
             messages, group_name, time_range,
             template_name=self._config.prompt_template,
             custom_prompt=self._config.custom_prompt
+        )
+        return await self._call_stream(prompt)
+
+    async def reduce_summaries(
+        self,
+        partial_summaries: list[str],
+        group_name: str = "",
+        time_range: str = "",
+        original_count: int = 0,
+    ) -> str:
+        """为任务队列提供 Map-Reduce 汇总入口。"""
+        prompt = build_reduce_prompt(
+            partial_summaries,
+            group_name=group_name,
+            time_range=time_range,
+            original_count=original_count,
         )
         return await self._call_stream(prompt)
 

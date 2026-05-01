@@ -14,10 +14,11 @@ import json
 import logging
 import sqlite3
 import sys
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 
 def _app_root() -> Path:
@@ -31,6 +32,44 @@ def _app_root() -> Path:
     return Path(__file__).parent.parent
 
 logger = logging.getLogger(__name__)
+
+_db_access_lock = threading.RLock()
+_sync_lock = threading.Lock()
+
+
+class DatabaseSyncError(RuntimeError):
+    """微信数据库同步失败。"""
+
+
+class _LockedConnection:
+    """在连接关闭前持有全局数据库锁，避免同步替换与读取互相抢占。"""
+
+    def __init__(self, conn: sqlite3.Connection, lock: threading.RLock) -> None:
+        self._conn = conn
+        self._lock = lock
+        self._closed = False
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._conn, name)
+
+    def __enter__(self) -> "_LockedConnection":
+        self._conn.__enter__()
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> Any:
+        try:
+            return self._conn.__exit__(exc_type, exc, tb)
+        finally:
+            self.close()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        try:
+            self._conn.close()
+        finally:
+            self._closed = True
+            self._lock.release()
 
 # ──────────────────────────────────────────────
 # 数据类
@@ -235,16 +274,23 @@ class WeChatReader:
 
     def _connect(self) -> sqlite3.Connection:
         """建立只读数据库连接"""
+        _db_access_lock.acquire()
         uri = f"file:{self._db_path}?mode=ro"
-        conn = sqlite3.connect(uri, uri=True, timeout=20,
-                               check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        # 启用 WAL 读取（即使主进程锁定也能读到最新快照）
         try:
-            conn.execute("PRAGMA journal_mode=WAL")
+            conn = sqlite3.connect(
+                uri,
+                uri=True,
+                timeout=30,
+                check_same_thread=False,
+                isolation_level=None,
+            )
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA query_only = ON")
+            conn.execute("PRAGMA busy_timeout = 30000")
+            return _LockedConnection(conn, _db_access_lock)  # type: ignore[return-value]
         except Exception:
-            pass  # 只读模式下可能不支持，忽略
-        return conn
+            _db_access_lock.release()
+            raise
 
     def _build_member_cache(
         self, conn: sqlite3.Connection
@@ -879,54 +925,307 @@ def _prepare_wx_path_with_wal(wx_path: str, tmp_dir: str) -> str:
     return dst_wx
 
 
+def _copy_wechat_snapshot(wx_path: str, tmp_dir: str) -> str:
+    """
+    复制微信原始数据库目录到临时目录，连同 WAL/SHM 一起形成一致快照。
+    """
+    import os
+    import shutil
+    import time
+
+    wx_path_abs = os.path.abspath(wx_path)
+    if not os.path.isdir(wx_path_abs):
+        raise DatabaseSyncError(f"微信数据库目录不存在: {wx_path}")
+
+    dst_root = os.path.join(tmp_dir, "wx_snapshot")
+    copied = 0
+    failed: list[str] = []
+    suffixes = (".db", ".db-wal", ".db-shm")
+
+    for root, _, files in os.walk(wx_path_abs):
+        rel = os.path.relpath(root, wx_path_abs)
+        dst_dir = os.path.join(dst_root, rel)
+        os.makedirs(dst_dir, exist_ok=True)
+        for fname in files:
+            if not fname.lower().endswith(suffixes):
+                continue
+            src = os.path.join(root, fname)
+            dst = os.path.join(dst_dir, fname)
+            last_exc: Exception | None = None
+            for attempt in range(3):
+                try:
+                    shutil.copy2(src, dst)
+                    copied += 1
+                    last_exc = None
+                    break
+                except OSError as exc:
+                    last_exc = exc
+                    logger.warning(
+                        "复制微信数据库快照失败，第 %d 次重试: %s -> %s: %s",
+                        attempt + 1, src, dst, exc,
+                    )
+                    time.sleep(0.25 * (attempt + 1))
+            if last_exc is not None:
+                failed.append(f"{src}: {last_exc}")
+
+    if failed:
+        raise DatabaseSyncError("复制微信数据库快照失败：" + "；".join(failed[:3]))
+    if copied == 0:
+        raise DatabaseSyncError(f"未在微信目录中找到可同步的 SQLite 数据库: {wx_path}")
+
+    logger.info("微信数据库快照复制完成：%s，共 %d 个文件", dst_root, copied)
+    return dst_root
+
+
+def _validate_merged_db(db_path: str) -> None:
+    """校验合并数据库是否完整且包含必要表。"""
+    uri = f"file:{Path(db_path).as_posix()}?mode=ro"
+    try:
+        conn = sqlite3.connect(uri, uri=True, timeout=30)
+        try:
+            conn.execute("PRAGMA query_only = ON")
+            check = conn.execute("PRAGMA integrity_check").fetchone()
+            if not check or str(check[0]).lower() != "ok":
+                raise DatabaseSyncError(f"merge_all.db integrity_check 失败: {check[0] if check else '无结果'}")
+
+            tables = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            missing = {"MSG", "Contact", "ChatRoom"} - tables
+            if missing:
+                raise DatabaseSyncError(f"merge_all.db 缺少必要表: {', '.join(sorted(missing))}")
+        finally:
+            conn.close()
+    except DatabaseSyncError:
+        raise
+    except Exception as exc:
+        raise DatabaseSyncError(f"校验 merge_all.db 失败: {exc}") from exc
+
+
+def _replace_database_atomically(pending_path: str, merge_path: str) -> None:
+    """在全局锁内用 pending 文件替换正式数据库。"""
+    import os
+    import shutil
+
+    with _db_access_lock:
+        target = Path(merge_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        for suffix in ("-wal", "-shm"):
+            sidecar = str(target) + suffix
+            if os.path.exists(sidecar):
+                try:
+                    os.remove(sidecar)
+                except OSError as exc:
+                    raise DatabaseSyncError(f"删除旧数据库旁路文件失败: {sidecar}: {exc}") from exc
+
+        backup = target.with_suffix(target.suffix + ".bak")
+        try:
+            if target.exists():
+                shutil.copy2(target, backup)
+            os.replace(pending_path, merge_path)
+            if backup.exists():
+                try:
+                    backup.unlink()
+                except OSError as exc:
+                    logger.warning("删除数据库备份失败，可手动清理 %s: %s", backup, exc)
+        except Exception as exc:
+            if backup.exists():
+                try:
+                    shutil.copy2(backup, target)
+                except OSError as restore_exc:
+                    logger.error("恢复旧 merge_all.db 失败: %s", restore_exc, exc_info=True)
+            raise DatabaseSyncError(f"替换 merge_all.db 失败: {exc}") from exc
+
+
 def sync_database() -> tuple[bool, str]:
     """
     使用 PyWxDump 的 decrypt_merge 同步微信最新数据库到本地 merge_all.db。
-    在解密前先将各 .db-wal 中的帧 patch 进主库副本，确保最新消息不丢失。
+    先复制微信原始库到临时目录，再输出 pending 数据库；校验通过后原子替换。
     """
     import json
     import os
-    import shutil
     import tempfile
     try:
         from pywxdump import decrypt_merge
     except ImportError:
+        logger.exception("同步失败：未安装 pywxdump")
         return False, "未安装 pywxdump"
 
-    conf_path = str(_app_root() / "wxdump_work" / "conf_auto.json")
-    if not os.path.exists(conf_path):
-        return False, f"配置文件不存在: {conf_path}"
+    if not _sync_lock.acquire(blocking=False):
+        msg = "数据库同步正在进行中，请稍后再试"
+        logger.warning(msg)
+        return False, msg
 
-    with open(conf_path, "r", encoding="utf-8") as f:
-        conf = json.load(f)
-
-    wxid = conf.get('auto_setting', {}).get('last', '')
-    if not wxid:
-        return False, "conf_auto.json 中未找到 wxid"
-
-    user_conf = conf.get(wxid, {})
-    wx_path = user_conf.get('wx_path', '')
-    key = user_conf.get('key', '')
-    merge_path = user_conf.get('merge_path', '')
-
-    if not wx_path or not key or not merge_path:
-        return False, "缺失 wx_path, key 或 merge_path"
-
-    # 相对路径 → 相对于 exe/项目根目录解析
-    if not os.path.isabs(merge_path):
-        merge_path = str(_app_root() / merge_path)
-
-    # 直接调用 decrypt_merge，让 PyWxDump 处理所有 MSG*.db
+    temp_root = ""
     try:
+        conf_path = str(_app_root() / "wxdump_work" / "conf_auto.json")
+        if not os.path.exists(conf_path):
+            raise DatabaseSyncError(f"配置文件不存在: {conf_path}")
+
+        with open(conf_path, "r", encoding="utf-8") as f:
+            conf = json.load(f)
+
+        wxid = conf.get('auto_setting', {}).get('last', '')
+        if not wxid:
+            raise DatabaseSyncError("conf_auto.json 中未找到 wxid")
+
+        user_conf = conf.get(wxid, {})
+        wx_path = user_conf.get('wx_path', '')
+        key = user_conf.get('key', '')
+        merge_path = user_conf.get('merge_path', '')
+
+        if not wx_path or not key or not merge_path:
+            raise DatabaseSyncError("缺失 wx_path, key 或 merge_path")
+
+        if not os.path.isabs(merge_path):
+            merge_path = str(_app_root() / merge_path)
+
+        import hashlib
+        import shutil
+        import struct
+        import sqlite3 as _sqlite3
+        from Cryptodome.Cipher import AES
+        from pywxdump import decrypt, get_core_db
+
         os.makedirs(os.path.dirname(merge_path), exist_ok=True)
+        temp_root = tempfile.mkdtemp(prefix="wechat-summary-sync-")
+        snapshot_path = _copy_wechat_snapshot(wx_path, temp_root)
+        pending_path = os.path.join(os.path.dirname(merge_path), "merge_all.pending.db")
+        if os.path.exists(pending_path):
+            os.remove(pending_path)
+
+        # ── Step 1: decrypt_merge 获取基础数据 ──────────────────
         success, msg = decrypt_merge(
-            wx_path=wx_path,
+            wx_path=snapshot_path,
             key=key,
             outpath=os.path.dirname(merge_path),
-            merge_save_path=merge_path,
+            merge_save_path=pending_path,
             db_type=['MSG', 'MediaMsg', 'MicroMsg']
         )
-        return success, msg
+        if not success:
+            raise DatabaseSyncError(f"PyWxDump decrypt_merge 失败: {msg}")
+        if not os.path.exists(pending_path):
+            raise DatabaseSyncError(f"PyWxDump 未生成 pending 数据库: {pending_path}")
+
+        # ── Step 2: WAL 补丁 —— 把加密 WAL 解密后 patch 进合并库 ──
+        # decrypt_merge 只解密了 .db 文件，WAL 里的最新帧没有被纳入。
+        # 对每个 MSG*.db，若存在 .db-wal 且非空，解密其帧并直接写入 pending 数据库。
+        PAGE_SIZE  = 4096
+        WAL_HDR    = 32
+        FRAME_HDR  = 24
+        password   = bytes.fromhex(key)
+
+        code, db_infos = get_core_db(snapshot_path, ['MSG'])
+        if not code:
+            logger.warning("WAL patch: get_core_db 失败，跳过 WAL 补丁；基础库仍会校验并替换")
+        else:
+            patched_any = False
+            for info in db_infos:
+                db_src = info['db_path']
+                wal_src = db_src + '-wal'
+                if not os.path.exists(wal_src) or os.path.getsize(wal_src) <= WAL_HDR:
+                    continue
+
+                wal_size = os.path.getsize(wal_src)
+                n_frames = (wal_size - WAL_HDR) // (FRAME_HDR + PAGE_SIZE)
+                if n_frames == 0:
+                    continue
+
+                with open(db_src, 'rb') as f:
+                    salt = f.read(16)
+                aes_key = hashlib.pbkdf2_hmac('sha1', password, salt, 64000, 32)
+
+                pages: dict[int, bytes] = {}
+                with open(wal_src, 'rb') as wf:
+                    wf.seek(WAL_HDR)
+                    for _ in range(n_frames):
+                        fh = wf.read(FRAME_HDR)
+                        if len(fh) < FRAME_HDR:
+                            break
+                        pg_no = struct.unpack('>I', fh[:4])[0]
+                        enc = wf.read(PAGE_SIZE)
+                        if len(enc) < PAGE_SIZE:
+                            break
+                        iv = enc[-48:-32]
+                        dec = AES.new(aes_key, AES.MODE_CBC, iv).decrypt(enc[:-48])
+                        pages[pg_no] = dec
+
+                if not pages:
+                    continue
+
+                logger.info(
+                    "WAL patch: %s -> %d 帧, %d 页",
+                    os.path.basename(db_src), n_frames, len(pages),
+                )
+
+                wal_tmpdir = tempfile.mkdtemp(dir=temp_root)
+                try:
+                    tmp_db = os.path.join(wal_tmpdir, os.path.basename(db_src))
+                    ok, decrypt_msg = decrypt(key, db_src, tmp_db)
+                    if not ok:
+                        raise DatabaseSyncError(f"WAL patch 解密 {db_src} 失败: {decrypt_msg}")
+
+                    with open(tmp_db, 'r+b') as dbf:
+                        db_size = os.path.getsize(tmp_db)
+                        for pg_no, dec in pages.items():
+                            if pg_no == 1:
+                                continue
+                            off = (pg_no - 1) * PAGE_SIZE
+                            if off + PAGE_SIZE <= db_size:
+                                dbf.seek(off)
+                                dbf.write(dec[:4048])
+
+                    src_conn = _sqlite3.connect(f'file:{tmp_db}?mode=ro', uri=True)
+                    dst_conn = _sqlite3.connect(pending_path, timeout=30)
+                    try:
+                        dst_conn.execute("PRAGMA busy_timeout = 30000")
+                        max_ts = dst_conn.execute(
+                            "SELECT MAX(CreateTime) FROM MSG"
+                        ).fetchone()[0] or 0
+                        rows = src_conn.execute(
+                            "SELECT * FROM MSG WHERE CreateTime > ?", (max_ts,)
+                        ).fetchall()
+
+                        if rows:
+                            ncols = len(rows[0])
+                            placeholders = ','.join(['?'] * ncols)
+                            dst_conn.executemany(
+                                f"INSERT OR IGNORE INTO MSG VALUES ({placeholders})", rows
+                            )
+                            dst_conn.commit()
+                            logger.info(
+                                "WAL patch: 从 %s 补入 %d 条新消息",
+                                os.path.basename(db_src), len(rows),
+                            )
+                            patched_any = True
+                    finally:
+                        src_conn.close()
+                        dst_conn.close()
+                except Exception as wal_exc:
+                    logger.warning("WAL patch 处理 %s 出错，跳过该库: %s", db_src, wal_exc, exc_info=True)
+                finally:
+                    shutil.rmtree(wal_tmpdir, ignore_errors=True)
+
+            if patched_any:
+                logger.info("WAL patch 完成，pending 数据库已更新最新消息")
+
+        _validate_merged_db(pending_path)
+        _replace_database_atomically(pending_path, merge_path)
+        logger.info("数据库同步完成，已替换 merge_all.db: %s", merge_path)
+        return True, merge_path
+
     except Exception as exc:
         logger.error("sync_database 失败: %s", exc, exc_info=True)
         return False, str(exc)
+    finally:
+        if temp_root:
+            try:
+                import shutil
+                shutil.rmtree(temp_root, ignore_errors=True)
+            except Exception as exc:
+                logger.warning("清理同步临时目录失败 %s: %s", temp_root, exc)
+        _sync_lock.release()

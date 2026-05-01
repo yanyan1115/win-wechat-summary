@@ -129,6 +129,47 @@ wxdump_work/
 
 ---
 
+## API 调用示例 / API Examples
+
+所有接口都只监听本机地址，默认是 `http://127.0.0.1:5000`。
+
+创建异步总结任务：
+
+```powershell
+$body = @{
+  room_id = "12345678@chatroom"
+  mode = "count"
+  count = 200
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Uri "http://127.0.0.1:5000/api/summarize" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+返回示例：
+
+```json
+{
+  "ok": true,
+  "job_id": "8f9d...",
+  "status": "queued",
+  "message": "总结任务已创建"
+}
+```
+
+轮询任务进度：
+
+```powershell
+Invoke-RestMethod "http://127.0.0.1:5000/api/jobs/8f9d..."
+```
+
+任务状态会依次经过 `queued`、`reading`、`preprocessing`、`calling_ai`、`saving`、`done`；失败时为 `failed`，并返回 `error`。长聊天记录会先清洗低信息量消息，并在超过模型上下文预算时自动使用 Map-Reduce 分块总结。
+
+---
+
 ## 常见问题 / FAQ
 
 **Q: 会不会导致微信封号？/ Will this get my WeChat account banned?**  

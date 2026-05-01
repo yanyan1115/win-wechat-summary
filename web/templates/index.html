@@ -378,7 +378,21 @@
                     <!-- 加载状态 -->
                     <div x-show="isSummarizing" class="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
                         <div class="w-12 h-12 rounded-full border-4 border-gray-200 border-t-primary animate-spin mb-4"></div>
-                        <p class="text-gray-600 font-medium animate-pulse">正在读取消息并请求 AI (这可能需要 10-30 秒)...</p>
+                        <p class="text-gray-700 font-medium" x-text="summaryJob.message || '正在准备总结任务...'"></p>
+                        <div class="w-72 max-w-[80%] h-2 bg-gray-200 rounded-full overflow-hidden mt-4">
+                            <div class="h-full bg-primary transition-all duration-300" :style="`width: ${summaryJob.progress || 0}%`"></div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">
+                            <span x-text="summaryJob.status || 'queued'"></span>
+                            <span> · </span>
+                            <span x-text="`${summaryJob.progress || 0}%`"></span>
+                        </p>
+                        <p x-show="summaryJob.meta && summaryJob.meta.original_count" class="text-xs text-gray-500 mt-1">
+                            原始 <span x-text="summaryJob.meta.original_count"></span> 条，
+                            保留 <span x-text="summaryJob.meta.cleaned_count"></span> 条，
+                            分块 <span x-text="summaryJob.meta.chunk_count || 1"></span> 个
+                        </p>
+                        <p x-show="summaryJob.error" class="text-sm text-red-600 mt-3 max-w-lg text-center" x-text="summaryJob.error"></p>
                     </div>
 
                     <!-- 结果内容 -->
@@ -782,6 +796,8 @@
                 isSummarizing: false,
                 summaryResult: '',
                 summaryMeta: {},
+                summaryJob: { status: '', progress: 0, message: '', error: '', meta: {} },
+                summaryPollTimer: null,
 
                 // 搜索参数
                 searchQuery: { keyword: '', start_time: '', summarize: false },
@@ -985,6 +1001,11 @@
                     if (!this.selectedGroup) return;
                     this.isSummarizing = true;
                     this.summaryResult = '';
+                    this.summaryJob = { status: 'queued', progress: 0, message: '正在创建总结任务', error: '', meta: {} };
+                    if (this.summaryPollTimer) {
+                        clearTimeout(this.summaryPollTimer);
+                        this.summaryPollTimer = null;
+                    }
 
                     const payload = {
                         room_id: this.selectedGroup.room_id,
@@ -1003,18 +1024,59 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(payload)
                         });
-                        this.summaryResult = data.result;
-                        this.summaryMeta = {
-                            group_name: data.group_name,
-                            time_range: data.time_range,
-                            msg_count: data.msg_count,
-                            provider: data.provider
+                        this.summaryJob = {
+                            ...this.summaryJob,
+                            status: data.status || 'queued',
+                            message: data.message || '总结任务已创建',
+                            progress: 3
                         };
-                        this.showToast('总结生成成功！', 'success');
+                        await this.pollSummaryJob(data.job_id);
                     } catch(e) {
                         // 错误已经在 apiCall 里 toast 了
-                    } finally {
                         this.isSummarizing = false;
+                    }
+                },
+
+                async pollSummaryJob(jobId) {
+                    try {
+                        const data = await this.apiCall(`/api/jobs/${encodeURIComponent(jobId)}`);
+                        const job = data.data || data;
+                        this.summaryJob = {
+                            status: job.status,
+                            progress: job.progress || 0,
+                            message: job.message || '',
+                            error: job.error || '',
+                            meta: job.meta || {}
+                        };
+
+                        if (job.status === 'done') {
+                            const result = job.result || {};
+                            this.summaryResult = result.result || '';
+                            this.summaryMeta = {
+                                group_name: result.group_name,
+                                time_range: result.time_range,
+                                msg_count: result.msg_count,
+                                provider: result.provider
+                            };
+                            this.isSummarizing = false;
+                            this.summaryPollTimer = null;
+                            this.showToast('总结生成成功！', 'success');
+                            return;
+                        }
+
+                        if (job.status === 'failed') {
+                            this.isSummarizing = false;
+                            this.summaryPollTimer = null;
+                            this.showToast(job.error || '总结任务失败', 'error');
+                            return;
+                        }
+
+                        this.summaryPollTimer = setTimeout(() => {
+                            this.pollSummaryJob(jobId);
+                        }, 1200);
+                    } catch (e) {
+                        this.isSummarizing = false;
+                        this.summaryPollTimer = null;
                     }
                 },
 

@@ -17,6 +17,7 @@ apscheduler>=3.10        # 定时任务（Phase 2）
 cryptography>=41.0       # API Key 安全存储（Windows DPAPI，Phase 2）
 pystray>=0.19            # 系统托盘图标（Phase 4）
 Pillow>=10.0             # 托盘图标绘制（Phase 4）
+psutil>=5.9              # 检测微信进程（初始化向导）
 
 # ── 打包（仅开发时需要）──────────────────────
 # pyinstaller>=6.0       # 打包为 exe（Phase 3，按需安装）

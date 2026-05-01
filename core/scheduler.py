@@ -32,7 +32,6 @@ def _run_async(coro, timeout=120):
 
 def scheduled_summarize_job():
     """定时执行的总结任务"""
-    print("[scheduler] 定时任务触发了！", flush=True)
     logger.info("开始执行定时总结任务...")
     
     try:
@@ -143,15 +142,12 @@ def scheduled_summarize_job():
                     )
                     logger.info("定时任务：群聊 [%s] 总结完成", group_name)
                 except Exception as exc:
-                    print(f"[scheduler] 群聊 [{group_name}] AI 总结出错: {exc}", flush=True)
                     logger.error("定时任务：群聊 [%s] AI 总结出错：%s", group_name, exc)
                     
         except Exception as exc:
-            print(f"[scheduler] provider初始化或循环报错: {exc}", flush=True)
             logger.exception("定时任务执行AI循环报错")
             
     except Exception as exc:
-        print(f"[scheduler] 定时任务最外层捕获到异常: {exc}", flush=True)
         logger.exception("定时任务最外层失败")
 
 def start_scheduler():
