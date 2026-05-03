@@ -259,9 +259,11 @@ A (English): Not currently. WeChat PC client is Windows-only, and database decry
 
 ---
 
-## 致谢
+## 致谢 / Credits
 
-MemoClover 在以下 AI 的帮助下成形并实现：
+**中文**：本项目在以下 AI 的帮助下成形并实现：
+
+**English**: This Project was shaped and implemented with help from:
 
 - Anthropic Claude Code
 - OpenAI ChatGPT Codex
