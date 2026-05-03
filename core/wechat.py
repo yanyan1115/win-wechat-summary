@@ -897,6 +897,119 @@ def _apply_wal_to_db(db_path: str, dst_path: str) -> None:
                 dbf.write(page_data)
 
 
+def _wal_sidecar_has_data(db_path: str) -> bool:
+    """判断 db_path 对应的 WAL 文件是否包含实际帧数据。"""
+    wal_path = db_path + "-wal"
+    try:
+        return Path(wal_path).exists() and Path(wal_path).stat().st_size > 32
+    except OSError as exc:
+        logger.warning("检查 WAL 文件失败 %s: %s", wal_path, exc)
+        return False
+
+
+def _checkpoint_wal_for_db(db_path: str, attempts: int = 3) -> bool:
+    """
+    尝试对临时快照中的 SQLite WAL 做 checkpoint。
+
+    微信原始库大多是加密页，标准 sqlite3 可能无法识别；失败时记录日志，
+    后续会继续走加密 WAL 帧 patch 兜底。
+    """
+    import time
+
+    if not _wal_sidecar_has_data(db_path):
+        return False
+
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        conn: sqlite3.Connection | None = None
+        try:
+            conn = sqlite3.connect(db_path, timeout=2)
+            conn.execute("PRAGMA busy_timeout = 2000")
+            full_ret = conn.execute("PRAGMA wal_checkpoint(FULL)").fetchone()
+            trunc_ret = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            logger.info(
+                "WAL checkpoint 完成: %s FULL=%s TRUNCATE=%s",
+                db_path, full_ret, trunc_ret,
+            )
+            return True
+        except sqlite3.DatabaseError as exc:
+            last_exc = exc
+            msg = str(exc).lower()
+            if "locked" not in msg and "busy" not in msg:
+                logger.warning(
+                    "WAL checkpoint 不适用于该库，转入加密 WAL patch: %s: %s",
+                    db_path, exc,
+                )
+                return False
+            logger.warning(
+                "WAL checkpoint 被锁定，第 %d/%d 次重试: %s: %s",
+                attempt, attempts, db_path, exc,
+            )
+        except OSError as exc:
+            last_exc = exc
+            logger.warning(
+                "WAL checkpoint 访问文件失败，第 %d/%d 次重试: %s: %s",
+                attempt, attempts, db_path, exc,
+            )
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except sqlite3.Error as exc:
+                    logger.warning("关闭 WAL checkpoint 连接失败 %s: %s", db_path, exc)
+
+        if attempt < attempts:
+            time.sleep(0.25 * attempt)
+
+    logger.warning("WAL checkpoint 最终失败，继续使用 patch 兜底: %s: %s", db_path, last_exc)
+    return False
+
+
+def _checkpoint_snapshot_wals(snapshot_path: str) -> None:
+    """扫描临时快照目录，对可识别的 WAL 库执行 FULL/TRUNCATE checkpoint。"""
+    import os
+
+    checked = 0
+    succeeded = 0
+    for root, _, files in os.walk(snapshot_path):
+        for fname in files:
+            if not fname.lower().endswith(".db"):
+                continue
+            db_path = os.path.join(root, fname)
+            if not _wal_sidecar_has_data(db_path):
+                continue
+            checked += 1
+            if _checkpoint_wal_for_db(db_path):
+                succeeded += 1
+
+    if checked:
+        logger.info("WAL checkpoint 扫描完成：发现 %d 个 WAL，成功 %d 个", checked, succeeded)
+
+
+def _patch_snapshot_wal_files(snapshot_path: str) -> None:
+    """把仍未 checkpoint 的加密 WAL 帧 patch 进临时快照主库。"""
+    import os
+
+    patched = 0
+    failed = 0
+    for root, _, files in os.walk(snapshot_path):
+        for fname in files:
+            if not fname.lower().endswith(".db"):
+                continue
+            db_path = os.path.join(root, fname)
+            if not _wal_sidecar_has_data(db_path):
+                continue
+            try:
+                _apply_wal_to_db(db_path, db_path)
+                patched += 1
+            except Exception as exc:
+                failed += 1
+                logger.warning("加密 WAL patch 失败，跳过该库 %s: %s", db_path, exc, exc_info=True)
+
+    if patched or failed:
+        logger.info("加密 WAL patch 扫描完成：成功 %d 个，失败 %d 个", patched, failed)
+
+
 def _prepare_wx_path_with_wal(wx_path: str, tmp_dir: str) -> str:
     """
     把 wx_path 下的所有 db 文件复制到 tmp_dir（保持相对目录结构），
@@ -966,7 +1079,13 @@ def _copy_wechat_snapshot(wx_path: str, tmp_dir: str) -> str:
                     )
                     time.sleep(0.25 * (attempt + 1))
             if last_exc is not None:
-                failed.append(f"{src}: {last_exc}")
+                if fname.lower().endswith((".db-wal", ".db-shm")):
+                    logger.warning(
+                        "跳过被占用的微信 WAL/SHM 旁路文件，后续使用已复制数据继续同步: %s: %s",
+                        src, last_exc,
+                    )
+                else:
+                    failed.append(f"{src}: {last_exc}")
 
     if failed:
         raise DatabaseSyncError("复制微信数据库快照失败：" + "；".join(failed[:3]))
@@ -1094,6 +1213,8 @@ def sync_database() -> tuple[bool, str]:
         os.makedirs(os.path.dirname(merge_path), exist_ok=True)
         temp_root = tempfile.mkdtemp(prefix="wechat-summary-sync-")
         snapshot_path = _copy_wechat_snapshot(wx_path, temp_root)
+        _checkpoint_snapshot_wals(snapshot_path)
+        _patch_snapshot_wal_files(snapshot_path)
         pending_path = os.path.join(os.path.dirname(merge_path), "merge_all.pending.db")
         if os.path.exists(pending_path):
             os.remove(pending_path)
@@ -1186,8 +1307,9 @@ def sync_database() -> tuple[bool, str]:
                         max_ts = dst_conn.execute(
                             "SELECT MAX(CreateTime) FROM MSG"
                         ).fetchone()[0] or 0
+                        threshold_ts = max(0, int(max_ts) - 60)
                         rows = src_conn.execute(
-                            "SELECT * FROM MSG WHERE CreateTime > ?", (max_ts,)
+                            "SELECT * FROM MSG WHERE CreateTime >= ?", (threshold_ts,)
                         ).fetchall()
 
                         if rows:

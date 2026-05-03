@@ -28,6 +28,10 @@
 | 🔍 **关键词搜索 / Search** | 跨群全文搜索 + AI 归纳搜索结果 / Cross-group full-text search with AI-powered digest |
 | 📜 **历史记录 / History** | 所有总结自动存档，支持导出为 Markdown / All summaries archived, exportable as Markdown |
 | ⏰ **定时任务 / Scheduler** | 每天自动总结指定群聊，静默写入历史 / Daily auto-summary for selected groups |
+| 🧩 **Map-Reduce 分块 / Chunked Summary** | 超大群聊自动分块总结再合并，减少上下文超限失败 / Splits huge chats into chunks and reduces them into one summary |
+| 📊 **进度可视化 / Progress UI** | 后台总结任务实时显示读取、清洗、分块和保存进度 / Real-time progress for reading, cleaning, chunking, and saving |
+| 🛡️ **SQLite 隔离锁 / SQLite Isolation** | 同步与读取互斥隔离，降低本地库替换时的并发风险 / Isolates sync and read paths to reduce concurrent replacement risk |
+| ⚡ **WAL 近实时同步 / WAL Sync** | 强制 WAL Checkpoint + 加密 WAL patch，尽量补齐微信运行中的最新消息 / WAL checkpoint and encrypted WAL patch for fresher live messages |
 | 🤖 **多模型支持 / Multi-model** | 自由切换 Claude / ChatGPT / DeepSeek / 通义千问 / Ollama / Switch between Claude, ChatGPT, DeepSeek, Qwen, Ollama |
 | 🔐 **安全存储 / Secure Storage** | API Key 使用 Windows DPAPI 加密，只有当前用户可解密 / API keys encrypted with Windows DPAPI |
 | 🗂️ **系统托盘 / System Tray** | 关闭浏览器后程序继续在托盘运行 / Keeps running in the tray after closing the browser |
@@ -62,14 +66,14 @@
 ### 方法一：直接运行 exe（推荐）/ Method 1: Run the exe (Recommended)
 
 **中文**：
-1. 前往 [Releases](https://github.com/yanyan1115/win-wechat-summary/releases/tag/v1.0.1) 下载最新的 `WeChat-Summary.exe`
+1. 前往 [Releases](https://github.com/yanyan1115/win-wechat-summary/releases/tag/v1.1.0) 下载最新的 `WeChat-Summary.exe`
 2. 保持微信 PC 版处于**登录状态**
 3. 双击 `WeChat-Summary.exe` 启动，**首次会弹出 UAC 提权对话框，点「是」即可**（读取微信内存需要管理员权限）；浏览器会自动打开 `http://127.0.0.1:5000`
 4. **首次启动**会弹出设置向导，点击「自动检测微信账号」，选择账号后确认即可完成初始化（无需任何命令行操作）
 5. 在「AI 设置」中配置 API Key，点击「同步」，即可开始使用
 
 **English**:
-1. Download the latest `WeChat-Summary.exe` from [Releases](https://github.com/yanyan1115/win-wechat-summary/releases/tag/v1.0.1)
+1. Download the latest `WeChat-Summary.exe` from [Releases](https://github.com/yanyan1115/win-wechat-summary/releases/tag/v1.1.0)
 2. Make sure WeChat PC client is **logged in**
 3. Double-click `WeChat-Summary.exe` — a **UAC prompt will appear on first launch, click "Yes"** (admin rights are required to read WeChat's memory); your browser will automatically open `http://127.0.0.1:5000`
 4. On **first launch**, a setup wizard will appear — click "Auto-detect WeChat account", select your account, and confirm (no command line needed)
@@ -184,9 +188,9 @@ A (English): Make sure `wxdump_work/conf_auto.json` exists and is correctly conf
 
 ---
 
-**Q: 同步后消息不是最新的？/ Messages are not up to date after sync?**  
-A（中文）: 微信在运行时，最新消息会先缓存在 WAL（预写日志）文件中，每隔几分钟才自动刷入数据库。同步成功后会显示「数据截至 HH:MM」，稍等几分钟再同步通常即可更新。如果长时间不更新（比如某个 MSG 数据库文件刚写满 120MB），重启一次微信 PC 版可强制刷新，之后再同步即可恢复正常。  
-A (English): While WeChat is running, new messages are first buffered in WAL (Write-Ahead Log) files and flushed to the database every few minutes. After a successful sync, the toast shows "Data as of HH:MM" — waiting a few minutes and syncing again usually picks up the latest messages. If the timestamp stays stuck for a long time (e.g. a MSG database file just hit the 120MB limit), restart WeChat PC client once to force a flush, then sync again.
+**Q: 同步后消息不是最新的？/ Messages are not up to date after sync?**
+A（中文）: 自 v1.1.0 起，程序已引入强制 WAL Checkpoint 机制，现在可以近乎实时地同步最新消息。若极极端情况下依然有延迟，才需要稍作等待。
+A (English): Since v1.1.0, the app includes a forced WAL Checkpoint mechanism, so latest messages can now be synced almost in real time. Only in extremely rare cases should you need to wait briefly and sync again.
 
 ---
 

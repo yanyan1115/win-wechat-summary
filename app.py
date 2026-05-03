@@ -55,10 +55,18 @@ def index():
 
 def _make_tray_icon() -> "PIL.Image.Image":
     """
-    生成托盘图标：深绿色圆形背景 + 白色「微」字。
-    不依赖外部图片文件，打包时也能正常工作。
+    生成托盘图标。
+    优先使用随程序打包的新图标，失败时回退到内置绘制图标。
     """
     from PIL import Image, ImageDraw, ImageFont
+
+    icon_path = BASE_DIR / "assets" / "app_icon.ico"
+    if icon_path.exists():
+        try:
+            return Image.open(icon_path).convert("RGBA")
+        except Exception as exc:
+            logger.warning("加载托盘图标失败，使用默认图标：%s", exc)
+
     size = 64
     img  = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)

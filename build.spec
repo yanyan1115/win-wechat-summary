@@ -17,7 +17,8 @@ datas = [
     # Flask 模板和静态资源
     ('web/templates',               'web/templates'),
     ('web/static',                  'web/static'),
-    # 图标
+    # 图标资源
+    ('assets/app_icon.ico',          'assets'),
     ('resources/icon.ico',          'resources'),
     # PyWxDump 偏移量数据库
     ('.venv/Lib/site-packages/pywxdump/WX_OFFS.json', 'pywxdump'),
@@ -38,12 +39,12 @@ hiddenimports = [
     'ai.factory',
     'ai.claude_provider',
     'ai.openai_provider',
-    'ai.ollama_provider',
     # 本项目 core 子包
     'core',
     'core.wechat',
     'core.history',
     'core.scheduler',
+    'core.jobs',
     # AI SDK
     'anthropic',
     'openai',
@@ -62,7 +63,6 @@ hiddenimports = [
     'PIL.ImageFont',
     # 其他
     'sqlite3',
-    'cryptography',
     'ctypes',
     'ctypes.wintypes',
     'psutil',
@@ -72,7 +72,7 @@ hiddenimports = [
     # pywxdump 子模块
     'pywxdump',
     'pywxdump.wx_core',
-    'pywxdump.wx_core.util',
+    'pywxdump.wx_core.utils',
     'pywxdump.db',
 ]
 
@@ -128,6 +128,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='resources/icon.ico',
+    icon='assets/app_icon.ico',
     version_file=None,
 )
