@@ -177,37 +177,49 @@ Invoke-RestMethod "http://127.0.0.1:5000/api/jobs/8f9d..."
 ## 常见问题 / FAQ
 
 **Q: 会不会导致微信封号？/ Will this get my WeChat account banned?**  
+
 A（中文）: 不会。本工具只读取本地 SQLite 数据库文件，不与微信服务器产生任何通信。  
+
 A (English): No. This tool only reads local SQLite database files and never communicates with WeChat's servers.
 
 ---
 
 **Q: 找不到群聊 / 群列表为空？/ Group list is empty?**  
+
 A（中文）: 确认 `wxdump_work/conf_auto.json` 存在且路径正确。点击界面左上角「同步」按钮触发数据库解密合并。  
+
 A (English): Make sure `wxdump_work/conf_auto.json` exists and is correctly configured. Click the "Sync" button in the top-left to decrypt and merge the database.
 
 ---
 
 **Q: 同步后消息不是最新的？/ Messages are not up to date after sync?**
+
 A（中文）: 自 v1.1.0 起，程序已引入强制 WAL Checkpoint 机制，现在可以近乎实时地同步最新消息。若极极端情况下依然有延迟，才需要稍作等待。
+
 A (English): Since v1.1.0, the app includes a forced WAL Checkpoint mechanism, so latest messages can now be synced almost in real time. Only in extremely rare cases should you need to wait briefly and sync again.
 
 ---
 
 **Q: 总结质量不好？/ Summary quality is poor?**  
+
 A（中文）: 可以在「AI 设置」中切换 Prompt 模板（技术交流群 / 通用群），或选择更强的模型（如 Claude Sonnet / GPT-4o）。  
+
 A (English): Try switching the prompt template in "AI Settings" (Tech group / General group), or use a more capable model such as Claude Sonnet or GPT-4o.
 
 ---
 
 **Q: 如何在没有网络的环境下使用？/ Can I use this offline?**  
+
 A（中文）: 前端已将 Tailwind / Alpine.js / Marked.js 打包为本地文件，无需网络。但 AI API 调用仍需联网（Ollama 除外）。  
+
 A (English): The frontend bundles Tailwind / Alpine.js / Marked.js as local files — no internet needed for the UI. AI API calls still require internet access (except Ollama, which runs locally).
 
 ---
 
 **Q: 支持 Mac / Linux 吗？/ Is Mac / Linux supported?**  
+
 A（中文）: 暂不支持。微信 PC 版仅有 Windows 版本，且数据库解密依赖 Windows DPAPI。  
+
 A (English): Not currently. WeChat PC client is Windows-only, and database decryption relies on Windows DPAPI.
 
 ---
@@ -244,6 +256,16 @@ A (English): Not currently. WeChat PC client is Windows-only, and database decry
 **中文**：本工具仅供个人学习和使用，请遵守微信用户协议。作者不对任何滥用行为承担责任。
 
 **English**: This tool is for personal use only. Please comply with WeChat's Terms of Service. The author is not responsible for any misuse.
+
+---
+
+## 致谢
+
+MemoClover 在以下 AI 的帮助下成形并实现：
+
+- Anthropic Claude Code
+- OpenAI ChatGPT Codex
+- Google Gemini
 
 ---
 
