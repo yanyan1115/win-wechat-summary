@@ -62,6 +62,13 @@
 
 1. **Windows 10/11 64位 / 64-bit**
 2. **微信 PC 版处于登录状态 / WeChat PC client, currently logged in**
+3. **微信 PC 3.x（已知支持到 3.9.12.55）/ WeChat PC 3.x (known supported up to 3.9.12.55)**
+
+### 微信版本兼容性 / WeChat Version Compatibility
+
+**中文**：当前版本依赖 PyWxDump 读取本地微信数据库，已知兼容上限为微信 PC `3.9.12.55`。微信 PC `4.x / 4.1` 改动较大，可能会出现“未检测到微信进程”或“无法读取密钥”，当前暂不支持。
+
+**English**: This app currently relies on PyWxDump to read the local WeChat database. The known supported upper bound is WeChat PC `3.9.12.55`. WeChat PC `4.x / 4.1` changed significantly and may show "WeChat process not detected" or "failed to read key"; it is not supported yet.
 
 ### 方法一：直接运行 exe（推荐）/ Method 1: Run the exe (Recommended)
 
@@ -209,6 +216,14 @@ A (English): The frontend bundles Tailwind / Alpine.js / Marked.js as local file
 **Q: 支持 Mac / Linux 吗？/ Is Mac / Linux supported?**  
 A（中文）: 暂不支持。微信 PC 版仅有 Windows 版本，且数据库解密依赖 Windows DPAPI。  
 A (English): Not currently. WeChat PC client is Windows-only, and database decryption relies on Windows DPAPI.
+
+---
+
+**Q: 为什么微信 4.x / 4.1 打开后提示未检测到微信进程？/ Why does WeChat 4.x / 4.1 say the process is not detected?**
+
+A（中文）: 这通常不是你没有启动微信，而是底层 PyWxDump 暂时无法识别微信 4.x / 4.1 的进程或读取密钥。当前版本已知支持到微信 PC `3.9.12.55`，4.x / 4.1 暂不支持。
+
+A (English): This usually does not mean WeChat is not running. The underlying PyWxDump layer may fail to recognize WeChat 4.x / 4.1 or read its key. The known supported upper bound is WeChat PC `3.9.12.55`; 4.x / 4.1 is not supported yet.
 
 ---
 

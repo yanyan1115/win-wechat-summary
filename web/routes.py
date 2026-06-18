@@ -23,6 +23,8 @@ from core.history import history_db
 logger = logging.getLogger(__name__)
 bp = Blueprint("api", __name__)
 
+SUPPORTED_WECHAT_VERSION_MAX = "3.9.12.55"
+
 
 # ── 异步桥接 ──────────────────────────────────────
 
@@ -53,6 +55,28 @@ def _ok(data: Any = None, **kwargs) -> Response:
 
 def _err(msg: str, code: int = 400) -> tuple[Response, int]:
     return jsonify({"ok": False, "error": msg}), code
+
+
+def _wechat_process_names() -> list[str]:
+    """返回当前可见的微信相关进程名，用于给初始化向导更准确的提示。"""
+    import psutil
+
+    names: set[str] = set()
+    for proc in psutil.process_iter(["name"]):
+        name = (proc.info.get("name") or "").strip()
+        lower_name = name.lower()
+        if "wechat" in lower_name or "weixin" in lower_name:
+            names.add(name)
+    return sorted(names, key=str.lower)
+
+
+def _format_process_names(names: list[str]) -> str:
+    if not names:
+        return ""
+    shown = ", ".join(names[:5])
+    if len(names) > 5:
+        shown += f" 等 {len(names)} 个"
+    return shown
 
 
 def _parse_dt(s: str | None) -> datetime | None:
@@ -394,15 +418,31 @@ def api_setup_detect():
     """
     try:
         import ctypes
-        import psutil
         from pywxdump import get_wx_info, WX_OFFS
 
-        # 先检查微信进程是否存在（不需要管理员权限）
-        wx_pids = [p.pid for p in psutil.process_iter(["name"]) if p.info["name"] == "WeChat.exe"]
-        if not wx_pids:
-            return _err("未检测到微信进程，请确保微信已启动并登录", 404)
+        # 先检查微信相关进程是否存在（不需要管理员权限）。
+        # 微信 4.x/4.1 可能让 PyWxDump 报 “WeChat No Run”，这里提前给出真实兼容性提示。
+        process_names = _wechat_process_names()
+        process_hint = _format_process_names(process_names)
+        has_classic_wechat = any(name.lower() == "wechat.exe" for name in process_names)
+        if not process_names:
+            return _err("未检测到微信进程，请确保微信 PC 版已启动并完成登录", 404)
+        if not has_classic_wechat:
+            return _err(
+                f"检测到疑似微信相关进程（{process_hint}），但当前版本只能读取微信 PC 3.x 的 WeChat.exe，"
+                f"已知支持上限为 {SUPPORTED_WECHAT_VERSION_MAX}。微信 4.x/4.1 暂不支持。",
+                404,
+            )
 
-        results = get_wx_info(WX_OFFS)
+        try:
+            results = get_wx_info(WX_OFFS)
+        except Exception as exc:
+            logger.exception("PyWxDump 读取微信信息失败")
+            return _err(
+                f"检测到微信进程（{process_hint}），但 PyWxDump 读取失败：{exc}。"
+                f"如果你使用微信 4.x/4.1，当前版本暂不支持；已知支持上限为 {SUPPORTED_WECHAT_VERSION_MAX}。",
+                500,
+            )
         # 过滤掉 key 为空的项
         valid = [r for r in results if r.get("key")]
         if not valid:
@@ -413,7 +453,8 @@ def api_setup_detect():
             detected_versions = list({r.get("version") for r in results if r.get("version")})
             ver_hint = f"（检测到版本：{', '.join(detected_versions)}）" if detected_versions else ""
             return _err(
-                f"可能是微信版本不受支持，当前支持到 3.9.12.55，请检查你的微信版本{ver_hint}",
+                f"检测到微信进程但无法读取密钥。请先确认已管理员运行并完全登录；"
+                f"如果你使用微信 4.x/4.1，当前版本暂不支持。已知支持上限为 {SUPPORTED_WECHAT_VERSION_MAX}{ver_hint}",
                 404,
             )
         # 脱敏手机号和邮箱再返回给前端
