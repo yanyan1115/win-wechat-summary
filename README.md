@@ -1,3 +1,5 @@
+
+
 # 微信群聊 AI 总结 / WeChat Group AI Summarizer
 
 > 🔒 **零封号风险** — 只读本地数据库，绝不与微信服务器通信  
@@ -62,6 +64,7 @@
 
 1. **Windows 10/11 64位 / 64-bit**
 2. **微信 PC 版处于登录状态 / WeChat PC client, currently logged in**
+3. **Python 3.10+（仅源码运行或打包需要）/ Python 3.10+ (required only for source run or build)**
 
 ### 方法一：直接运行 exe（推荐）/ Method 1: Run the exe (Recommended)
 
