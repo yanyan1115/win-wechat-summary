@@ -398,7 +398,9 @@ def api_setup_detect():
         from pywxdump import get_wx_info, WX_OFFS
 
         # 先检查微信进程是否存在（不需要管理员权限）
-        wx_pids = [p.pid for p in psutil.process_iter(["name"]) if p.info["name"] == "WeChat.exe"]
+        # 微信 3.x 进程名为 WeChat.exe，4.0+ 为 Weixin.exe
+        _wx_proc_names = ("WeChat.exe", "Weixin.exe")
+        wx_pids = [p.pid for p in psutil.process_iter(["name"]) if p.info["name"] in _wx_proc_names]
         if not wx_pids:
             return _err("未检测到微信进程，请确保微信已启动并登录", 404)
 
